@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图像检索系统 | Image Retrieval System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0a0a0f;
+            color: #e0e0e0;
+        }
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .glass-panel {
+            background: rgba(20, 20, 28, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+        .neon-border {
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.15), inset 0 0 20px rgba(59, 130, 246, 0.05);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+        .upload-zone {
+            background: linear-gradient(135deg, rgba(30, 30, 40, 0.8) 0%, rgba(20, 20, 30, 0.9) 100%);
+            border: 2px dashed rgba(99, 102, 241, 0.4);
+            transition: all 0.3s ease;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: rgba(99, 102, 241, 0.8);
+            background: linear-gradient(135deg, rgba(40, 40, 60, 0.8) 0%, rgba(30, 30, 45, 0.9) 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 40px rgba(99, 102, 241, 0.2);
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 30px rgba(59, 130, 246, 0.6);
+        }
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+        .metric-card {
+            background: linear-gradient(135deg, rgba(30, 30, 40, 0.9) 0%, rgba(25, 25, 35, 0.95) 100%);
+            border-left: 3px solid #3b82f6;
+        }
+        .result-item {
+            background: rgba(30, 30, 40, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.2s ease;
+        }
+        .result-item:hover {
+            background: rgba(40, 40, 55, 0.8);
+            border-color: rgba(99, 102, 241, 0.3);
+            transform: translateX(5px);
+        }
+        .model-option {
+            transition: all 0.2s ease;
+        }
+        .model-option:hover {
+            background: rgba(59, 130, 246, 0.1);
+        }
+        .model-option.selected {
+            background: rgba(59, 130, 246, 0.2);
+            border-left: 3px solid #3b82f6;
+        }
+        /* Custom Combo Box Styles */
+        .combo-box-container {
+            position: relative;
+        }
+        .combo-input {
+            background: rgba(30, 30, 40, 0.8);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            transition: all 0.3s ease;
+        }
+        .combo-input:focus {
+            outline: none;
+            border-color: rgba(99, 102, 241, 0.8);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+        .combo-dropdown {
+            top: 100%;
+            left: 0;
+            right: 0;
+            margin-top: 4px;
+            background: rgba(25, 25, 35, 0.95);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 50;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.2s ease;
+            backdrop-filter: blur(10px);
+        }
+        .combo-dropdown.active {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+        .combo-option {
+            padding: 8px 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .combo-option:last-child {
+            border-bottom: none;
+        }
+        .combo-option:hover {
+            background: rgba(99, 102, 241, 0.2);
+            padding-left: 16px;
+        }
+        .combo-option.selected {
+            background: rgba(99, 102, 241, 0.3);
+            color: #60a5fa;
+        }
+        .combo-arrow {
+            transition: transform 0.3s ease;
+        }
+        .combo-arrow.open {
+            transform: rotate(180deg);
+        }
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(20, 20, 30, 0.5);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(99, 102, 241, 0.5);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(99, 102, 241, 0.8);
+        }
+        .pulse-ring {
+            animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
+        /* Input number arrows removal */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+
+    <!-- Header -->
+    <header class="mb-8 flex justify-between items-center">
+        <div>
+            <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+                图像检索引擎
+            </h1>
+            <p class="text-sm mt-1 mono text-gray-500">Image Retrieval System v2.0</p>
+        </div>
+        <div class="flex gap-4 text-xs mono text-gray-400">
+            <span class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-green-500 pulse-ring"></span>
+                System Ready
+            </span>
+            <span id="api-status">API: 等待连接</span>
+        </div>
+    </header>
+
+    <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left Sidebar: Model Selection -->
+        <div class="lg:col-span-3 space-y-4">
+            <div class="glass-panel rounded-xl p-5 h-full">
+                <h2 class="text-lg font-semibold mb-4 flex items-center gap-2 text-blue-400">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+                    模型列表
+                </h2>
+                <div class="space-y-2" id="model-list">
+                    <div class="model-option selected rounded-lg p-3 cursor-pointer border border-transparent" data-model="resnet50">
+                        <div class="flex justify-between items-center">
+                            <span class="font-medium text-sm">ResNet-50</span>
+                            <span class="text-xs text-gray-500 mono">CNN</span>
+                        </div>
+                        <div class="text-xs text-gray-400 mt-1">经典深度残差网络</div>
+                    </div>
+                    <div class="model-option rounded-lg p-3 cursor-pointer border border-transparent" data-model="vit">
+                        <div class="flex justify-between items-center">
+                            <span class="font-medium text-sm">ViT-Base</span>
+                            <span class="text-xs text-gray-500 mono">Transformer</span>
+                        </div>
+                        <div class="text-xs text-gray-400 mt-1">视觉Transformer</div>
+                    </div>
+                    <div class="model-option rounded-lg p-3 cursor-pointer border border-transparent" data-model="clip">
+                        <div class="flex justify-between items-center">
+                            <span class="font-medium text-sm">CLIP</span>
+                            <span class="text-xs text-gray-500 mono">Multi-modal</span>
+                        </div>
+                        <div class="text-xs text-gray-400 mt-1">图文对齐模型</div>
+                    </div>
+                    <div class="model-option rounded-lg p-3 cursor-pointer border border-transparent" data-model="efficientnet">
+                        <div class="flex justify-between items-center">
+                            <span class="font-medium text-sm">EfficientNet-B4</span>
+                            <span class="text-xs text-gray-500 mono">CNN</span>
+                        </div>
+                        <div class="text-xs text-gray-400 mt-1">高效网络架构</div>
+                    </div>
+                    <div class="model-option rounded-lg p-3 cursor-pointer border border-transparent" data-model="swin">
+                        <div class="flex justify-between items-center">
+                            <span class="font-medium text-sm">Swin Transformer</span>
+                            <span class="text-xs text-gray-500 mono">Hierarchical</span>
+                        </div>
+                        <div class="text-xs text-gray-400 mt-1">层次化视觉模型</div>
+                    </div>
+                </div>
+                
+                <div class="mt-6 pt-6 border-t border-gray-700">
+                    <h3 class="text-sm font-semibold mb-3 text-gray-400">系统信息</h3>
+                    <div class="space-y-2 text-xs mono text-gray-500">
+                        <div>
+                            <div class="text-gray-400 mb-1">Gallery路径:</div>
+                            <div class="text-gray-300 path-display">data/BallShow/bounding_box_test</div>
+                        </div>
+                        <div>
+                            <div class="text-gray-400 mb-1">Query路径:</div>
+                            <div class="text-gray-300 path-display">data/BallShow/query</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="lg:col-span-9 space-y-6">
+            
+            <!-- Top Section: Upload & Controls -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                <!-- Upload Zone -->
+                <div class="glass-panel rounded-xl p-1 h-full">
+                    <div id="upload-zone" class="upload-zone rounded-lg h-full flex flex-col items-center justify-center cursor-pointer relative overflow-hidden group">
+                        <input type="file" id="file-input" class="hidden" accept="image/*">
+                        <div id="upload-placeholder" class="text-center z-10">
+                            <svg class="w-12 h-12 mx-auto mb-3 text-gray-500 group-hover:text-blue-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                            <p class="text-sm text-gray-400 font-medium">拖入Query图片</p>
+                            <p class="text-xs text-gray-600 mt-1">或点击从本地选择</p>
+                        </div>
+                        <img id="preview-image" class="absolute inset-0 w-full h-full object-contain hidden p-4" alt="Preview">
+                        <button id="clear-image" class="absolute top-2 right-2 bg-red-500/80 hover:bg-red-600 text-white p-1.5 rounded-full hidden z-20 backdrop-blur-sm transition-all">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Controls & Metrics -->
+                <div class="space-y-4">
+                    <!-- Controls -->
+                    <div class="glass-panel rounded-xl p-5">
+                        <div class="flex flex-wrap items-end gap-4">
+                            <!-- Modified K-Value Input -->
+                            <div class="flex-1 min-w-[140px]">
+                                <label class="block text-xs font-medium text-gray-400 mb-2">设置K值 (Top-K)</label>
+                                <div class="combo-box-container" id="k-value-container">
+                                    <div class="relative">
+                                        <input 
+                                            type="number" 
+                                            id="k-value-input" 
+                                            value="10" 
+                                            min="1" 
+                                            max="1000"
+                                            class="combo-input w-full rounded-lg px-3 py-2 text-sm text-white pr-10"
+                                            placeholder="输入K值"
+                                        >
+                                        <button 
+                                            id="k-dropdown-btn" 
+                                            class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-400 transition-colors"
+                                        >
+                                            <svg class="w-4 h-4 combo-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <div class="combo-dropdown" id="k-dropdown">
+                                        <div class="combo-option" data-value="5">5</div>
+                                        <div class="combo-option selected" data-value="10">10</div>
+                                        <div class="combo-option" data-value="20">20</div>
+                                        <div class="combo-option" data-value="50">50</div>
+                                        <div class="combo-option" data-value="100">100</div>
+                                        <div class="combo-option" data-value="200">200</div>
+                                        <div class="combo-option" data-value="500">500</div>
+                                    </div>
+                                </div>
+                                <div class="text-[10px] text-gray-600 mt-1">范围: 1-1000</div>
+                            </div>
+                            
+                            <button id="search-btn" class="btn-primary text-white px-8 py-2 rounded-lg font-semibold flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                                <span>开搜！！！</span>
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Performance Metrics -->
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="metric-card rounded-lg p-4">
+                            <div class="text-xs text-gray-500 mb-1">特征提取用时</div>
+                            <div class="flex items-baseline gap-1">
+                                <span id="extract-time" class="text-2xl font-bold text-blue-400 mono">0</span>
+                                <span class="text-xs text-gray-500">ms</span>
+                            </div>
+                            <div class="text-[10px] text-gray-600 mt-1">目标: ≤40ms</div>
+                        </div>
+                        <div class="metric-card rounded-lg p-4" style="border-left-color: #10b981;">
+                            <div class="text-xs text-gray-500 mb-1">查询匹配用时</div>
+                            <div class="flex items-baseline gap-1">
+                                <span id="match-time" class="text-2xl font-bold text-green-400 mono">0</span>
+                                <span class="text-xs text-gray-500">ms</span>
+                            </div>
+                            <div class="text-[10px] text-gray-600 mt-1">目标: ≤30ms</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <div class="glass-panel rounded-xl p-6 min-h-[400px]">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-lg font-semibold flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-purple-500"></span>
+                        检索结果
+                        <span id="result-count" class="text-sm text-gray-500 font-normal mono">(等待查询)</span>
+                    </h2>
+                    <div class="flex gap-2">
+                        <button onclick="exportResults()" class="text-xs px-3 py-1.5 rounded border border-gray-700 hover:bg-gray-800 transition-colors text-gray-400">
+                            导出JSON
+                        </button>
+                        <button onclick="clearResults()" class="text-xs px-3 py-1.5 rounded border border-gray-700 hover:bg-gray-800 transition-colors text-gray-400">
+                            清空
+                        </button>
+                    </div>
+                </div>
+
+                <div id="results-container" class="space-y-2 max-h-[500px] overflow-y-auto pr-2">
+                    <div class="text-center py-20 text-gray-600">
+                        <svg class="w-16 h-16 mx-auto mb-4 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                        <p class="text-sm">上传图片并点击"开搜"开始检索</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- API Configuration Modal -->
+    <div id="api-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+        <div class="glass-panel rounded-xl p-6 max-w-md w-full border border-gray-700">
+            <h3 class="text-lg font-semibold mb-4 text-blue-400">API 配置</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">后端服务地址</label>
+                    <input type="text" id="api-endpoint" value="http://localhost:8000" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm mono">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">特征提取端口</label>
+                        <input type="number" id="port-extract" value="8001" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm mono">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">检索匹配端口</label>
+                        <input type="number" id="port-search" value="8002" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm mono">
+                    </div>
+                </div>
+            </div>
+            <div class="mt-6 flex justify-end gap-3">
+                <button onclick="closeApiModal()" class="px-4 py-2 rounded text-sm text-gray-400 hover:text-white transition-colors">取消</button>
+                <button onclick="saveApiConfig()" class="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white text-sm transition-colors">保存配置</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating Config Button -->
+    <button onclick="openApiModal()" class="fixed bottom-6 right-6 w-12 h-12 rounded-full bg-gray-800 border border-gray-700 hover:bg-gray-700 flex items-center justify-center transition-all shadow-lg group" title="API配置">
+        <svg class="w-5 h-5 text-gray-400 group-hover:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+    </button>
+
+    <script>
+        // State Management
+        const state = {
+            selectedModel: '',
+            selectedModelPath: '',
+            kValue: 10,
+            currentImage: null,
+            apiConfig: {
+                baseUrl: 'http://localhost',
+                extractPort: 8003,
+                searchPort: 8003
+            }
+        };
+
+        // DOM Elements
+        const uploadZone = document.getElementById('upload-zone');
+        const fileInput = document.getElementById('file-input');
+        const previewImage = document.getElementById('preview-image');
+        const uploadPlaceholder = document.getElementById('upload-placeholder');
+        const clearImageBtn = document.getElementById('clear-image');
+        const searchBtn = document.getElementById('search-btn');
+        let modelOptions = document.querySelectorAll('.model-option');
+        const resultsContainer = document.getElementById('results-container');
+        const extractTimeEl = document.getElementById('extract-time');
+        const matchTimeEl = document.getElementById('match-time');
+
+        // K-Value Combo Box Elements
+        const kValueInput = document.getElementById('k-value-input');
+        const kDropdownBtn = document.getElementById('k-dropdown-btn');
+        const kDropdown = document.getElementById('k-dropdown');
+        const kOptions = document.querySelectorAll('.combo-option');
+
+        // Event Listeners
+        uploadZone.addEventListener('click', () => fileInput.click());
+        
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        });
+        
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('dragover');
+        });
+        
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) handleFile(files[0]);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) handleFile(e.target.files[0]);
+        });
+
+        clearImageBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            clearImage();
+        });
+
+        modelOptions.forEach(option => {
+            option.addEventListener('click', () => {
+                modelOptions.forEach(o => o.classList.remove('selected'));
+                option.classList.add('selected');
+                state.selectedModel = option.dataset.model;
+            });
+        });
+
+        searchBtn.addEventListener('click', performSearch);
+
+        // K-Value Combo Box Logic
+        kDropdownBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            kDropdown.classList.toggle('active');
+            kDropdownBtn.querySelector('.combo-arrow').classList.toggle('open');
+        });
+
+        kValueInput.addEventListener('input', (e) => {
+            let val = parseInt(e.target.value);
+            if (isNaN(val) || val < 1) val = 1;
+            if (val > 1000) val = 1000;
+            state.kValue = val;
+            
+            // Update dropdown selection visual
+            kOptions.forEach(opt => {
+                opt.classList.toggle('selected', parseInt(opt.dataset.value) === val);
+            });
+        });
+
+        kValueInput.addEventListener('blur', (e) => {
+            if (e.target.value === '' || parseInt(e.target.value) < 1) {
+                e.target.value = 10;
+                state.kValue = 10;
+            }
+        });
+
+        kOptions.forEach(option => {
+            option.addEventListener('click', () => {
+                const val = parseInt(option.dataset.value);
+                kValueInput.value = val;
+                state.kValue = val;
+                
+                kOptions.forEach(o => o.classList.remove('selected'));
+                option.classList.add('selected');
+                
+                kDropdown.classList.remove('active');
+                kDropdownBtn.querySelector('.combo-arrow').classList.remove('open');
+            });
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!document.getElementById('k-value-container').contains(e.target)) {
+                kDropdown.classList.remove('active');
+                kDropdownBtn.querySelector('.combo-arrow').classList.remove('open');
+            }
+        });
+
+        // Functions
+        function handleFile(file) {
+            if (!file.type.startsWith('image/')) {
+                alert('请上传图片文件');
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                state.currentImage = e.target.result;
+                previewImage.src = e.target.result;
+                previewImage.classList.remove('hidden');
+                uploadPlaceholder.classList.add('hidden');
+                clearImageBtn.classList.remove('hidden');
+                searchBtn.disabled = false;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearImage() {
+            state.currentImage = null;
+            previewImage.src = '';
+            previewImage.classList.add('hidden');
+            uploadPlaceholder.classList.remove('hidden');
+            clearImageBtn.classList.add('hidden');
+            fileInput.value = '';
+            searchBtn.disabled = true;
+        }
+
+        async function performSearch() {
+            if (!state.currentImage) return;
+            if (!state.selectedModelPath) {
+                alert('请先选择一个模型');
+                return;
+            }
+            
+            searchBtn.disabled = true;
+            searchBtn.innerHTML = `<svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> 处理中...`;
+            
+            // Reset metrics
+            extractTimeEl.textContent = '0';
+            matchTimeEl.textContent = '0';
+            
+            try {
+                const startTime = Date.now();
+                
+                // Step 1: Feature Extraction
+                const extractStartTime = Date.now();
+                const features = await extractFeatures();
+                const extractTime = Date.now() - extractStartTime;
+                extractTimeEl.textContent = extractTime;
+                
+                // Visual feedback
+                extractTimeEl.parentElement.parentElement.classList.add('neon-border');
+                setTimeout(() => extractTimeEl.parentElement.parentElement.classList.remove('neon-border'), 500);
+                
+                // Step 2: Search Matching
+                const matchStartTime = Date.now();
+                const results = await searchSimilar(features);
+                const matchTime = Date.now() - matchStartTime;
+                matchTimeEl.textContent = matchTime;
+                
+                // Visual feedback
+                matchTimeEl.parentElement.parentElement.classList.add('neon-border');
+                setTimeout(() => matchTimeEl.parentElement.parentElement.classList.remove('neon-border'), 500);
+                
+                const totalTime = Date.now() - startTime;
+                
+                // Display results
+                displayResults(results);
+            } catch (error) {
+                console.error('Search failed:', error);
+                alert('检索失败: ' + error.message);
+            } finally {
+                searchBtn.disabled = false;
+                searchBtn.innerHTML = `<span>开搜！！！</span><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>`;
+            }
+        }
+
+        async function extractFeatures() {
+            try {
+                console.log('开始提取特征...');
+                console.log('当前模型路径:', state.selectedModelPath);
+                
+                // Convert base64 image to Blob
+                const response = await fetch(state.currentImage);
+                if (!response.ok) {
+                    throw new Error(`获取图片失败: ${response.status}`);
+                }
+                const blob = await response.blob();
+                console.log('图片 blob 大小:', blob.size, 'bytes');
+                
+                // Create FormData
+                const formData = new FormData();
+                formData.append('model_path', state.selectedModelPath);
+                formData.append('image', blob, 'query.jpg');
+                
+                // 打印 FormData 内容
+                console.log('FormData 内容:');
+                for (let [key, value] of formData.entries()) {
+                    if (value instanceof File) {
+                        console.log(`  ${key}:`, value.name, value.size, 'bytes');
+                    } else {
+                        console.log(`  ${key}:`, value);
+                    }
+                }
+                
+                // Call API
+                const extractUrl = `${state.apiConfig.baseUrl}:${state.apiConfig.extractPort}/extract`;
+                console.log('Extract URL:', extractUrl);
+                
+                const response2 = await fetch(extractUrl, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                console.log('响应状态:', response2.status, response2.statusText);
+                
+                if (!response2.ok) {
+                    // 尝试读取错误详情
+                    let errorText = '';
+                    try {
+                        const errorData = await response2.json();
+                        errorText = errorData.detail || JSON.stringify(errorData);
+                    } catch (e) {
+                        errorText = await response2.text();
+                    }
+                    console.error('服务器返回的错误:', errorText);
+                    throw new Error(`API请求失败: ${response2.status} ${response2.statusText} - ${errorText}`);
+                }
+                
+                const data = await response2.json();
+                if (!data.success) {
+                    throw new Error(data.error || '特征提取失败');
+                }
+                
+                console.log('特征提取成功，特征维度:', data.features[0].length);
+                return data.features;
+            } catch (error) {
+                console.error('Extract features error:', error);
+                throw error;
+            }
+        }
+
+        async function searchSimilar(features) {
+            try {
+                // Call API
+                const searchUrl = `${state.apiConfig.baseUrl}:${state.apiConfig.searchPort}/search`;
+                console.log('Search URL:', searchUrl);
+
+                // 使用FormData格式发送请求
+                const formData = new FormData();
+                formData.append('model_path', state.selectedModelPath);
+                formData.append('k', state.kValue);
+                formData.append('features', JSON.stringify(features));
+
+                const response = await fetch(searchUrl, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                console.log('Response status:', response.status, response.statusText);
+                
+                if (!response.ok) {
+                    // 尝试读取错误详情
+                    let errorText = '';
+                    let errorData = null;
+                    try {
+                        errorData = await response.json();
+                        errorText = errorData.detail || JSON.stringify(errorData);
+                        console.error('完整的错误数据:', errorData);
+                    } catch (e) {
+                        errorText = await response.text();
+                    }
+                    console.error('服务器返回的错误:', errorText);
+                    throw new Error(`API请求失败: ${response.status} ${response.statusText} - ${errorText}`);
+                }
+                
+                const data = await response.json();
+                if (!data.success) {
+                    throw new Error(data.error || '搜索失败');
+                }
+                
+                console.log('搜索成功，返回结果数:', data.results.length);
+                return data.results;
+            } catch (error) {
+                console.error('Search similar error:', error);
+                throw error;
+            }
+        }
+
+        function displayResults(results) {
+            document.getElementById('result-count').textContent = `(Top-${results.length})`;
+            
+            resultsContainer.innerHTML = results.map((result, index) => {
+                // 构建图片URL - 使用后端静态文件服务
+                const imageUrl = `${state.apiConfig.baseUrl}:${state.apiConfig.extractPort}/static/${result.path}`;
+                
+                return `
+                <div class="result-item rounded-lg p-4 flex items-center gap-4" style="animation: slideIn 0.3s ease ${index * 0.05}s both;">
+                    <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center text-lg font-bold text-blue-400 mono border border-blue-500/30">
+                        ${result.rank}
+                    </div>
+                    <img src="${imageUrl}" alt="${result.id}" class="w-16 h-32 object-cover rounded-lg border border-gray-700" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2264%22 height=%22128%22%3E%3Crect width=%2264%22 height=%22128%22 fill=%22%23374151%22/%3E%3Ctext x=%2232%22 y=%2264%22 font-size=%2210%22 fill=%22%239CA3AF%22 text-anchor=%22middle%22%3EImage%3C/text%3E%3C/svg%3E'">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="font-mono text-sm text-gray-300 truncate">${result.id}</span>
+                            <span class="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                ${(result.similarity * 100).toFixed(2)}%
+                            </span>
+                        </div>
+                        <div class="text-xs text-gray-500 mono truncate">${result.id}</div>
+                    </div>
+                    <div class="w-32 h-2 bg-gray-800 rounded-full overflow-hidden">
+                        <div class="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-500" style="width: ${result.similarity * 100}%"></div>
+                    </div>
+                </div>
+            `}).join('');
+        }
+
+        function clearResults() {
+            resultsContainer.innerHTML = `
+                <div class="text-center py-20 text-gray-600">
+                    <svg class="w-16 h-16 mx-auto mb-4 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                    <p class="text-sm">上传图片并点击"开搜"开始检索</p>
+                </div>
+            `;
+            document.getElementById('result-count').textContent = '(等待查询)';
+            extractTimeEl.textContent = '0';
+            matchTimeEl.textContent = '0';
+        }
+
+        function exportResults() {
+            const results = Array.from(document.querySelectorAll('.result-item')).map(item => ({
+                rank: item.querySelector('.mono').textContent,
+                id: item.querySelector('.text-gray-300').textContent,
+                similarity: item.querySelector('.text-blue-400').textContent
+            }));
+            
+            const blob = new Blob([JSON.stringify(results, null, 2)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `search_results_${Date.now()}.json`;
+            a.click();
+        }
+
+        // API Modal Functions
+        function openApiModal() {
+            document.getElementById('api-modal').classList.remove('hidden');
+        }
+
+        function closeApiModal() {
+            document.getElementById('api-modal').classList.add('hidden');
+        }
+
+        function saveApiConfig() {
+            state.apiConfig.baseUrl = document.getElementById('api-endpoint').value;
+            state.apiConfig.extractPort = document.getElementById('port-extract').value;
+            state.apiConfig.searchPort = document.getElementById('port-search').value;
+            
+            document.getElementById('api-status').textContent = `API: ${state.apiConfig.baseUrl}`;
+            closeApiModal();
+        }
+
+        // Add CSS animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from { opacity: 0; transform: translateX(-20px); }
+                to { opacity: 1; transform: translateX(0); }
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Load model list from backend API
+        async function loadModelList() {
+            try {
+                // 从后端API获取模型列表
+                const response = await fetch(`${state.apiConfig.baseUrl}:${state.apiConfig.extractPort}/api/models`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                const modelList = data.models;
+                
+                const modelListContainer = document.getElementById('model-list');
+                modelListContainer.innerHTML = '';
+                
+                modelList.forEach((model, index) => {
+                    const modelElement = document.createElement('div');
+                    modelElement.className = `model-option ${index === 0 ? 'selected' : ''} rounded-lg p-3 cursor-pointer border border-transparent`;
+                    modelElement.dataset.model = model.name;
+                    modelElement.dataset.path = model.path;
+                    
+                    // 提取模型类型
+                    let modelType = 'Transformer';
+                    
+                    modelElement.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <span class="font-medium text-sm">${model.name}</span>
+                            <span class="text-xs text-gray-500 mono">${modelType}</span>
+                        </div>
+                        <div class="text-xs text-gray-400 mt-1">训练轮次: ${model.epoch}</div>
+                    `;
+                    
+                    modelListContainer.appendChild(modelElement);
+                });
+                
+                // Update model options reference
+                modelOptions = document.querySelectorAll('.model-option');
+                
+                // Add event listeners
+                modelOptions.forEach(option => {
+                    option.addEventListener('click', () => {
+                        modelOptions.forEach(o => o.classList.remove('selected'));
+                        option.classList.add('selected');
+                        state.selectedModel = option.dataset.model;
+                        // 标准化路径格式（使用正斜杠）
+                        state.selectedModelPath = option.dataset.path.replace(/\\/g, '/');
+                    });
+                });
+                
+                // Set default model
+                if (modelList.length > 0) {
+                    state.selectedModel = modelList[0].name;
+                    state.selectedModelPath = modelList[0].path.replace(/\\/g, '/');
+                }
+                
+            } catch (error) {
+                console.error('Failed to load model list:', error);
+                const modelListContainer = document.getElementById('model-list');
+                modelListContainer.innerHTML = `
+                    <div class="flex items-center justify-center py-8 text-red-400">
+                        <svg class="w-8 h-8 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-.633-1.964-.633-2.732 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                        </svg>
+                        加载模型列表失败: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // Initialize
+        searchBtn.disabled = true;
+        loadModelList();
+    </script>
+</body>
+</html>
