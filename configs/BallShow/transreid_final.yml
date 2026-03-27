@@ -51,7 +51,7 @@ SOLVER:
 TEST:
   EVAL: True
   IMS_PER_BATCH: 256
-  RE_RANKING: True
+  RE_RANKING: False
   WEIGHT: ''
   NECK_FEAT: 'after'
   FEAT_NORM: 'yes'

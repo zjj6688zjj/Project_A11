@@ -32,6 +32,9 @@ gallery_cache = {}
 gallery_normalized_cache = {}  # 缓存归一化后的gallery特征
 device = None
 
+# Gallery特征缓存目录
+GALLERY_CACHE_DIR = "gallery_cache"
+
 # 初始化GPU设备
 def init_device():
     """初始化并预热GPU"""
@@ -43,10 +46,10 @@ def init_device():
         dummy = torch.randn(1, 3, 256, 128).to(device)
         _ = dummy.sum()
         torch.cuda.synchronize()
-        print(f"✓ GPU initialized: {torch.cuda.get_device_name(0)}")
+        print(f"[OK] GPU initialized: {torch.cuda.get_device_name(0)}")
         print(f"  显存: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
     else:
-        print("⚠️  CUDA not available, using CPU")
+        print("[WARNING] CUDA not available, using CPU")
 
     return device
 
@@ -75,10 +78,35 @@ def load_model(model_path):
     if model_name == "BallShow":
         config_file = "configs/BallShow/vit_transreid_stride.yml" if has_sie else "configs/BallShow/vit_base.yml"
 
+    def load_config_safe(config_path):
+        try:
+            new_cfg.merge_from_file(config_path)
+        except UnicodeDecodeError:
+            # If encoding error, try with explicit UTF-8 encoding
+            import tempfile
+            with open(config_path, 'rb') as src:
+                content = src.read()
+                # Try to decode with UTF-8, fallback to latin-1 for binary data
+                try:
+                    decoded = content.decode('utf-8')
+                except UnicodeDecodeError:
+                    decoded = content.decode('latin-1')
+                
+                # Write to temporary file
+                with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', suffix='.yml', delete=False) as tmp:
+                    tmp.write(decoded)
+                    tmp_path = tmp.name
+                
+                try:
+                    new_cfg.merge_from_file(tmp_path)
+                finally:
+                    # Clean up temporary file
+                    os.unlink(tmp_path)
+    
     if os.path.exists(config_file):
-        new_cfg.merge_from_file(config_file)
+        load_config_safe(config_file)
     else:
-        new_cfg.merge_from_file("configs/BallShow/vit_base.yml")
+        load_config_safe("configs/BallShow/vit_base.yml")
 
     if has_sie:
         new_cfg.MODEL.SIE_CAMERA = True
@@ -108,7 +136,7 @@ def load_model(model_path):
     if torch.cuda.is_available():
         torch.cuda.synchronize()
 
-    print(f"✓ Model loaded and warmed up on {device}")
+    print(f"[OK] Model loaded and warmed up on {device}")
 
     return model, new_cfg
 
@@ -224,13 +252,26 @@ def scan_models_from_logs(logs_dir="logs"):
     return models
 
 # 预加载gallery特征(GPU提取,CPU存储)
-def load_gallery_features(model, cfg):
+def load_gallery_features(model, cfg, model_path):
     """在GPU上提取gallery特征,存储在CPU上"""
     gallery_dir = "data/BallShow/bounding_box_test"
 
     if not os.path.exists(gallery_dir):
         print(f"Warning: Gallery directory not found: {gallery_dir}")
         return None, []
+
+    # 检查缓存文件
+    os.makedirs(GALLERY_CACHE_DIR, exist_ok=True)
+    cache_key = model_path.replace('\\', '/').replace('//', '/').replace('/', '_')
+    cache_file = os.path.join(GALLERY_CACHE_DIR, f"{cache_key}.npz")
+
+    if os.path.exists(cache_file):
+        print(f"Loading gallery features from cache: {cache_file}")
+        cache_data = np.load(cache_file)
+        gallery_features = cache_data['features']
+        gallery_paths = cache_data['paths'].tolist()
+        print(f"[OK] Gallery features loaded from cache: shape={gallery_features.shape}")
+        return gallery_features, gallery_paths
 
     image_files = sorted(glob.glob(os.path.join(gallery_dir, "*.jpg")))
 
@@ -269,12 +310,15 @@ def load_gallery_features(model, cfg):
             with torch.no_grad():
                 features = model(batch_tensor, cam_label=0, view_label=0)
 
+                # 处理特征维度
+                print(f"    Raw features shape: {features.shape}, dim: {features.dim()}")
                 if features.dim() == 4:
                     features = features.mean(dim=[2, 3])
                 elif features.dim() == 3:
                     features = features.mean(dim=1)
                 elif features.dim() == 1:
                     features = features.unsqueeze(0)
+                print(f"    Processed features shape: {features.shape}")
 
             # 立即转到CPU存储
             gallery_features_list.append(features.cpu().numpy())
@@ -286,7 +330,13 @@ def load_gallery_features(model, cfg):
 
     if gallery_features_list:
         gallery_features = np.vstack(gallery_features_list)
-        print(f"✓ Gallery features loaded: shape={gallery_features.shape}")
+        gallery_paths_array = np.array(gallery_paths, dtype='U')
+
+        # 保存到缓存文件
+        print(f"Saving gallery features to cache: {cache_file}")
+        np.savez_compressed(cache_file, features=gallery_features, paths=gallery_paths_array)
+
+        print(f"[OK] Gallery features loaded: shape={gallery_features.shape}")
         return gallery_features, gallery_paths
     else:
         return None, []
@@ -348,7 +398,9 @@ async def extract(
         preprocess_time = (time.time() - preprocess_start) * 1000
 
         # 提取特征(GPU -> CPU)
+        feature_start = time.time()
         features = extract_features(model, image_tensor)
+        feature_time = (time.time() - feature_start) * 1000
 
         # JSON序列化
         serialize_start = time.time()
@@ -359,12 +411,20 @@ async def extract(
         print(f"  Image read: {read_time:.2f}ms")
         print(f"  Image convert: {convert_time:.2f}ms")
         print(f"  Preprocess: {preprocess_time:.2f}ms")
+        print(f"  Feature extract: {feature_time:.2f}ms")
         print(f"  Serialize: {serialize_time:.2f}ms")
         print(f"  Total extract time: {total_time:.2f}ms")
 
         return {
             'success': True,
-            'features': features_list
+            'features': features_list,
+            'timing': {
+                'total': round(total_time, 2),
+                'feature_time': round(feature_time, 2),
+                'preprocess_time': round(preprocess_time, 2),
+                'read_convert_time': round(read_time + convert_time, 2),
+                'serialize_time': round(serialize_time, 2)
+            }
         }
     except Exception as e:
         import traceback
@@ -398,12 +458,14 @@ async def search(
             provided_gallery = None
 
         # 处理query特征:优先使用直接传递的特征,否则从上传的图片提取
+        extract_time = 0  # 初始化变量
         if features:
             # 直接使用传递的特征
             print(f"Using provided query features")
             query_features = np.array(json.loads(features), dtype=np.float32)
             if len(query_features.shape) == 1:
                 query_features = query_features.reshape(1, -1)
+            extract_time = 0  # 使用缓存特征时，提取时间为0
         elif image:
             image_data = await image.read()
             img = Image.open(BytesIO(image_data)).convert('RGB')
@@ -416,10 +478,10 @@ async def search(
                 model_config_cache[model_path_normalized] = cfg
             else:
                 print(f"Using cached model: {model_path_normalized}")
-
+            
             model = model_cache[model_path_normalized]
             cfg = model_config_cache[model_path_normalized]
-
+            
             # 提取特征
             height = cfg.INPUT.SIZE_TRAIN[0] if hasattr(cfg.INPUT, 'SIZE_TRAIN') else 256
             width = cfg.INPUT.SIZE_TRAIN[1] if hasattr(cfg.INPUT, 'SIZE_TRAIN') else 128
@@ -450,7 +512,7 @@ async def search(
                 cfg = model_config_cache[model_path_normalized]
 
                 # 提取gallery特征(GPU -> CPU)
-                gallery_features, gallery_paths = load_gallery_features(model, cfg)
+                gallery_features, gallery_paths = load_gallery_features(model, cfg, model_path_normalized)
                 gallery_cache[model_path_normalized] = (gallery_features, gallery_paths)
 
             gallery_features, gallery_paths = gallery_cache[model_path_normalized]
@@ -463,7 +525,7 @@ async def search(
 
         # 检查是否使用re-ranking
         cfg = model_config_cache[model_path_normalized]
-        config_use_reranking = cfg.get('TEST', {}).get('RE_RANKING', False)
+        config_use_reranking = cfg.TEST.RE_RANKING
         use_reranking = config_use_reranking or use_reranking.lower() == 'true'
 
         if use_reranking:
@@ -515,11 +577,16 @@ async def search(
         total_time = (time.time() - total_start) * 1000
         rerank_info = "✓ Re-ranking enabled" if use_reranking else "✗ Re-ranking disabled"
         print(f"  Total search time: {total_time:.2f}ms ({rerank_info})")
-
+        
         return {
             'success': True,
             'results': results,
-            'reranking': use_reranking
+            'reranking': use_reranking,
+            'timing': {
+                'total': round(total_time, 2),
+                'extract_time': round(extract_time if 'extract_time' in locals() else 0, 2),
+                'match_time': round(total_time - (extract_time if 'extract_time' in locals() else 0), 2)
+            }
         }
     except Exception as e:
         import traceback

@@ -551,39 +551,27 @@
                 alert('请先选择一个模型');
                 return;
             }
-            
+
             searchBtn.disabled = true;
             searchBtn.innerHTML = `<svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> 处理中...`;
-            
+
             // Reset metrics
             extractTimeEl.textContent = '0';
             matchTimeEl.textContent = '0';
-            
+
             try {
                 const startTime = Date.now();
-                
+
                 // Step 1: Feature Extraction
                 const extractStartTime = Date.now();
-                const features = await extractFeatures();
-                const extractTime = Date.now() - extractStartTime;
-                extractTimeEl.textContent = extractTime;
-                
-                // Visual feedback
-                extractTimeEl.parentElement.parentElement.classList.add('neon-border');
-                setTimeout(() => extractTimeEl.parentElement.parentElement.classList.remove('neon-border'), 500);
-                
-                // Step 2: Search Matching
-                const matchStartTime = Date.now();
-                const results = await searchSimilar(features);
-                const matchTime = Date.now() - matchStartTime;
-                matchTimeEl.textContent = matchTime;
-                
-                // Visual feedback
-                matchTimeEl.parentElement.parentElement.classList.add('neon-border');
-                setTimeout(() => matchTimeEl.parentElement.parentElement.classList.remove('neon-border'), 500);
-                
+                const extractResult = await extractFeatures();
+                const frontendExtractTime = Date.now() - extractStartTime;
+
+                // Step 2: Search Matching (pass features and extractTiming)
+                const results = await searchSimilar(extractResult.features, extractResult.extractTiming);
+
                 const totalTime = Date.now() - startTime;
-                
+
                 // Display results
                 displayResults(results);
             } catch (error) {
@@ -653,14 +641,19 @@
                 }
                 
                 console.log('特征提取成功，特征维度:', data.features[0].length);
-                return data.features;
+                console.log('特征提取timing:', data.timing);
+                return {
+                    features: data.features,
+                    extractTiming: data.timing
+                };
             } catch (error) {
                 console.error('Extract features error:', error);
                 throw error;
             }
         }
 
-        async function searchSimilar(features) {
+        async function searchSimilar(features, extractTiming) {
+            console.log('searchSimilar received extractTiming:', extractTiming);
             try {
                 // Call API
                 const searchUrl = `${state.apiConfig.baseUrl}:${state.apiConfig.searchPort}/search`;
@@ -676,9 +669,9 @@
                     method: 'POST',
                     body: formData
                 });
-                
+
                 console.log('Response status:', response.status, response.statusText);
-                
+
                 if (!response.ok) {
                     // 尝试读取错误详情
                     let errorText = '';
@@ -693,13 +686,31 @@
                     console.error('服务器返回的错误:', errorText);
                     throw new Error(`API请求失败: ${response.status} ${response.statusText} - ${errorText}`);
                 }
-                
+
                 const data = await response.json();
                 if (!data.success) {
                     throw new Error(data.error || '搜索失败');
                 }
-                
+
                 console.log('搜索成功，返回结果数:', data.results.length);
+
+                // 使用后端返回的timing数据更新显示
+                // extractTiming 来自 /extract 响应, data.timing 来自 /search 响应
+                // 我们显示纯粹的特征提取时间 (feature_time) 和 匹配时间
+                const extractTime = extractTiming ? extractTiming.feature_time : 0;
+                const matchTime = data.timing ? data.timing.total : 0;
+
+                extractTimeEl.textContent = Math.round(extractTime);
+                matchTimeEl.textContent = Math.round(matchTime);
+
+                // Visual feedback
+                extractTimeEl.parentElement.parentElement.classList.add('neon-border');
+                matchTimeEl.parentElement.parentElement.classList.add('neon-border');
+                setTimeout(() => {
+                    extractTimeEl.parentElement.parentElement.classList.remove('neon-border');
+                    matchTimeEl.parentElement.parentElement.classList.remove('neon-border');
+                }, 500);
+
                 return data.results;
             } catch (error) {
                 console.error('Search similar error:', error);

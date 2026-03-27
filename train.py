@@ -36,7 +36,77 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.config_file != "":
-        cfg.merge_from_file(args.config_file)
+        # Fix for GBK encoding issues on Windows
+        # Use yaml directly with explicit encoding
+        import yaml
+        
+        # First load the config file
+        try:
+            with open(args.config_file, 'r', encoding='utf-8') as f:
+                cfg_dict = yaml.safe_load(f)
+        except UnicodeDecodeError:
+            # Try with GBK if UTF-8 fails
+            try:
+                with open(args.config_file, 'r', encoding='gbk') as f:
+                    cfg_dict = yaml.safe_load(f)
+            except UnicodeDecodeError:
+                # Final fallback: binary read with latin-1
+                with open(args.config_file, 'rb') as f:
+                    content = f.read().decode('latin-1')
+                    cfg_dict = yaml.safe_load(content)
+        
+        if cfg_dict:
+            # Fix for YAML number type parsing
+            def fix_yaml_types(value):
+                """Recursively fix YAML parsed values to ensure correct types"""
+                if isinstance(value, dict):
+                    return {k: fix_yaml_types(v) for k, v in value.items()}
+                elif isinstance(value, list):
+                    return [fix_yaml_types(v) for v in value]
+                elif isinstance(value, str):
+                    # Try to convert string numbers to actual numbers
+                    try:
+                        # Handle scientific notation like "1e-4"
+                        if 'e' in value.lower():
+                            return float(value)
+                        # Handle regular integers and floats
+                        if '.' in value:
+                            return float(value)
+                        else:
+                            return int(value)
+                    except (ValueError, TypeError):
+                        # Keep as string if conversion fails
+                        return value
+                else:
+                    # Already correct type (int, float, bool, etc.)
+                    return value
+            
+            # Apply type fixing
+            cfg_dict = fix_yaml_types(cfg_dict)
+            
+            # Custom merge function that handles missing keys gracefully
+            def merge_dict_into_cfg(cfg_dict, cfg_node, prefix=""):
+                for key, value in cfg_dict.items():
+                    full_key = f"{prefix}.{key}" if prefix else key
+                    if isinstance(value, dict):
+                        # Recursively merge nested dictionaries
+                        if hasattr(cfg_node, key):
+                            merge_dict_into_cfg(value, getattr(cfg_node, key), full_key)
+                        else:
+                            # If key doesn't exist, create it
+                            from yacs.config import CfgNode
+                            setattr(cfg_node, key, CfgNode(value))
+                    else:
+                        # Set scalar value
+                        if hasattr(cfg_node, key):
+                            setattr(cfg_node, key, value)
+                        else:
+                            # If key doesn't exist, create it (for new parameters like TEST.K1)
+                            setattr(cfg_node, key, value)
+            
+            # Apply the custom merge
+            merge_dict_into_cfg(cfg_dict, cfg)
+    
     cfg.merge_from_list(args.opts)
     cfg.freeze()
 
@@ -55,9 +125,19 @@ if __name__ == '__main__':
 
     if args.config_file != "":
         logger.info("Loaded configuration file {}".format(args.config_file))
-        with open(args.config_file, 'r') as cf:
-            config_str = "\n" + cf.read()
-            logger.info(config_str)
+        # Fix encoding issue for reading config file
+        try:
+            with open(args.config_file, 'r', encoding='utf-8') as cf:
+                config_str = "\n" + cf.read()
+                logger.info(config_str)
+        except UnicodeDecodeError:
+            try:
+                with open(args.config_file, 'r', encoding='gbk') as cf:
+                    config_str = "\n" + cf.read()
+                    logger.info(config_str)
+            except UnicodeDecodeError:
+                # Skip config file display if encoding fails
+                logger.info("Config file loaded (encoding details skipped due to charset issues)")
     logger.info("Running with config:\n{}".format(cfg))
 
     if cfg.MODEL.DIST_TRAIN:

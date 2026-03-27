@@ -19,32 +19,91 @@ TEST_IMAGE_PATH = "data/BallShow/bounding_box_test/0002_c1s1_000001_00.jpg"
 
 def get_last_checkpoint_from_logs():
     """获取logs目录下每个子文件夹中最后一个pth文件"""
-    logs_dir = Path("logs")
+    logs_dir = Path("logs").resolve()
     if not logs_dir.exists():
+        print(f"错误: logs目录不存在: {logs_dir}")
         raise FileNotFoundError("logs目录不存在")
 
     models = []
-    for item in logs_dir.iterdir():
-        if item.is_dir():
-            # 查找该目录下所有的.pth文件
-            pth_files = list(item.glob("*.pth"))
-            if pth_files:
-                # 按epoch号排序，取最后一个
-                pth_files.sort(key=lambda x: int(x.stem.split('_')[-1]) if '_' in x.stem else 0)
-                last_pth = pth_files[-1]
-                models.append({
-                    'name': item.name,
-                    'path': str(last_pth)
-                })
+    
+    print(f"扫描logs目录: {logs_dir}")
+    
+    # 获取所有子目录
+    subdirs = []
+    for item in sorted(logs_dir.iterdir()):
+        item_path = logs_dir / item
 
+        if item_path.is_dir():
+            subdirs.append(item_path)
+        else:
+            print(f"    跳过非目录: {item}")
+    
+    if not subdirs:
+        print("警告: logs目录下没有子目录")
+        return models
+    
+    print(f"找到 {len(subdirs)} 个子目录")
+    
+    for i, config_path in enumerate(subdirs, 1):
+        config_name = config_path.name
+        
+        print(f"  扫描目录 [{i}/{len(subdirs)}]: {config_name}")
+        
+        # 使用rglob递归查找所有.pth文件
+        pth_files = list(config_path.rglob("*.pth"))
+        
+        if not pth_files:
+            print(f"    未找到.pth文件")
+            continue
+        
+        print(f"    找到 {len(pth_files)} 个.pth文件")
+        
+        max_epoch = 0
+        latest_pth = None
+        
+        for pth_file in pth_files:
+            # 提取epoch号
+            filename = pth_file.name
+            if 'checkpoint_' in filename:
+                try:
+                    # 匹配 transformer_checkpoint_10.pth 或 checkpoint_10.pth
+                    epoch_str = filename.split('checkpoint_')[-1].split('.pth')[0]
+                    epoch = int(epoch_str)
+                    if epoch > max_epoch:
+                        max_epoch = epoch
+                        latest_pth = pth_file
+                except Exception as e:
+                    print(f"    解析文件名失败: {filename}, 错误: {e}")
+                    continue
+        
+        if latest_pth:
+            clean_name = config_name.replace("BallShow_", "")
+            display_name = f"{clean_name} (Epoch {max_epoch})"
+            
+            models.append({
+                "id": config_name,
+                "name": display_name,
+                "path": str(latest_pth),
+                "epoch": max_epoch
+            })
+            print(f"    -> 添加模型: {display_name}")
+        else:
+            print(f"    未找到有效的checkpoint文件")
+    
+    if not models:
+        print("警告: 未找到任何模型")
+    else:
+        print(f"找到 {len(models)} 个模型")
+        
+    models.sort(key=lambda x: x['epoch'], reverse=True)
     return models
 
 
 def test_feature_extraction():
     """测试特征提取性能"""
-    print("=" * 50)
-    print("测试1: 特征提取性能")
-    print("=" * 50)
+    print("=" * 60)
+    print("测试1: 特征提取性能(API调用)")
+    print("=" * 60)
 
     # 获取所有模型的最后一个checkpoint
     models = get_last_checkpoint_from_logs()
@@ -52,9 +111,8 @@ def test_feature_extraction():
         print("未找到任何模型")
         return []
 
-    print(f"\n找到 {len(models)} 个模型:")
-    for model_info in models:
-        print(f"  - {model_info['name']}: {model_info['path']}")
+    print(f"API服务器: {BASE_URL}")
+    print(f"测试图片: {TEST_IMAGE_PATH}")
 
     # 读取测试图片
     with open(TEST_IMAGE_PATH, 'rb') as f:
@@ -109,9 +167,9 @@ def test_feature_extraction():
 
 def test_search():
     """测试查询匹配性能(使用真实特征)"""
-    print("\n" + "=" * 50)
-    print("测试2: 查询匹配性能(使用真实特征)")
-    print("=" * 50)
+    print("\n" + "=" * 60)
+    print("测试2: 查询匹配性能(API调用,使用真实特征)")
+    print("=" * 60)
 
     # 获取所有模型的最后一个checkpoint
     models = get_last_checkpoint_from_logs()
@@ -213,9 +271,9 @@ def test_search():
 
 def test_search_with_reranking():
     """测试查询匹配性能(使用Re-ranking)"""
-    print("\n" + "=" * 50)
-    print("测试3: 查询匹配性能(使用Re-ranking)")
-    print("=" * 50)
+    print("\n" + "=" * 60)
+    print("测试3: 查询匹配性能(API调用,使用Re-ranking)")
+    print("=" * 60)
 
     # 获取所有模型的最后一个checkpoint
     models = get_last_checkpoint_from_logs()
@@ -329,12 +387,9 @@ def test_search_with_reranking():
 
 def main():
     """主函数"""
-    print("\n" + "=" * 50)
-    print("后端性能测试")
-    print("=" * 50)
-    print(f"API服务器: {BASE_URL}")
-    print(f"测试图片: {TEST_IMAGE_PATH}")
-    print("=" * 50)
+    print("=" * 60)
+    print("后端性能测试(API调用版 - 使用真实特征)")
+    print("=" * 60)
 
     try:
         # 测试1: 特征提取

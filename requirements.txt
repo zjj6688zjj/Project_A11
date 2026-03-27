@@ -1,5 +1,29 @@
+# Deep Learning Framework
 torch
 torchvision
-timm
-yacs
+
+# Image Processing
+Pillow
 opencv-python
+
+# Data Processing
+numpy
+
+# Web Framework (for API server)
+fastapi
+uvicorn
+python-multipart  # Required by FastAPI for form data
+
+# HTTP Client
+requests
+
+# Configuration Management
+yacs
+
+# PyTorch Image Models (for RandomErasing data augmentation)
+timm
+
+# Note: The following modules are part of Python Standard Library and don't need to be installed:
+# - os, json, time, argparse, random, math, logging, sys, re, glob
+# - collections.abc, errno, copy, io, functools, itertools, bisect, pickle, typing
+# - pathlib (part of standard library since Python 3.4)

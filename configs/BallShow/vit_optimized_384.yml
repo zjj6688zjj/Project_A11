@@ -2,27 +2,26 @@ MODEL:
   PRETRAIN_CHOICE: 'imagenet'
   PRETRAIN_PATH: './weights/jx_vit_base_p16_224-80ecf9dd.pth'
   METRIC_LOSS_TYPE: 'triplet'
-  IF_LABELSMOOTH: 'on'
+  IF_LABELSMOOTH: 'off'
   IF_WITH_CENTER: 'no'
   NAME: 'transformer'
   NO_MARGIN: True
   DEVICE_ID: '0'
   TRANSFORMER_TYPE: 'vit_base_patch16_224_TransReID'
-  STRIDE_SIZE: [12,12]
+  STRIDE_SIZE: [12, 12]
   SIE_CAMERA: True
   SIE_COE: 3.0
   JPM: True
   RE_ARRANGE: True
-  DEVIDE_LENGTH: 6
 
 INPUT:
-  SIZE_TRAIN: [256,128]
-  SIZE_TEST: [256,128]
-  PROB: 0.5
-  RE_PROB: 0.6
-  PADDING: 16
-  PIXEL_MEAN: [0.5,0.5,0.5]
-  PIXEL_STD: [0.5,0.5,0.5]
+  SIZE_TRAIN: [384, 128]
+  SIZE_TEST: [384, 128]
+  PROB: 0.5 # random horizontal flip
+  RE_PROB: 0.5 # random erasing
+  PADDING: 10
+  PIXEL_MEAN: [0.5, 0.5, 0.5]
+  PIXEL_STD: [0.5, 0.5, 0.5]
 
 DATASETS:
   NAMES: ('ballshow')
@@ -35,11 +34,10 @@ DATALOADER:
 
 SOLVER:
   OPTIMIZER_NAME: 'SGD'
-  MAX_EPOCHS: 240
-  BASE_LR: 0.008
+  MAX_EPOCHS: 150
+  BASE_LR: 0.006
   IMS_PER_BATCH: 64
   WARMUP_METHOD: 'linear'
-  WARMUP_EPOCHS: 15
   LARGE_FC_LR: False
   CHECKPOINT_PERIOD: 5
   LOG_PERIOD: 20
@@ -47,13 +45,14 @@ SOLVER:
   WEIGHT_DECAY: 1e-4
   WEIGHT_DECAY_BIAS: 1e-4
   BIAS_LR_FACTOR: 2
+  SEED: 1234
 
 TEST:
   EVAL: True
   IMS_PER_BATCH: 256
   RE_RANKING: False
   WEIGHT: ''
-  NECK_FEAT: 'after'
+  NECK_FEAT: 'before'
   FEAT_NORM: 'yes'
 
-OUTPUT_DIR: 'logs/BallShow_transreid_advanced'
+OUTPUT_DIR: 'logs/BallShow_vit_optimized_384'

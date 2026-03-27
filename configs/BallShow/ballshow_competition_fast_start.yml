@@ -1,0 +1,90 @@
+# BallShow Basketball Player ReID - 快速启动配置
+# 针对训练初期收敛慢的问题进行优化
+
+MODEL:
+  PRETRAIN_CHOICE: 'imagenet'
+  PRETRAIN_PATH: './weights/jx_vit_base_p16_224-80ecf9dd.pth'
+  METRIC_LOSS_TYPE: 'triplet'
+  IF_LABELSMOOTH: 'on'
+  IF_WITH_CENTER: 'no'
+  NAME: 'transformer'
+  NO_MARGIN: True
+  DEVICE_ID: '0'
+  TRANSFORMER_TYPE: 'vit_base_patch16_224_TransReID'
+  STRIDE_SIZE: [12, 12]
+  SIE_CAMERA: True
+  SIE_COE: 3.0
+  JPM: True
+  RE_ARRANGE: True
+
+INPUT:
+  SIZE_TRAIN: [256, 128]
+  SIZE_TEST: [256, 128]
+  PROB: 0.5
+  RE_PROB: 0.6
+  PADDING: 10
+  PIXEL_MEAN: [0.5, 0.5, 0.5]
+  PIXEL_STD: [0.5, 0.5, 0.5]
+
+DATASETS:
+  NAMES: 'ballshow'
+  ROOT_DIR: './data'
+
+DATALOADER:
+  SAMPLER: 'softmax_triplet'
+  NUM_INSTANCE: 4
+  NUM_WORKERS: 8
+
+SOLVER:
+  # 优化器设置
+  OPTIMIZER_NAME: 'SGD'
+  MAX_EPOCHS: 150
+  
+  # ✅ 关键调整1：提高初始学习率
+  BASE_LR: 0.02  # 从0.008提高到0.02，加速初期收敛
+  
+  IMS_PER_BATCH: 64
+  
+  # ✅ 关键调整2：缩短预热周期
+  WARMUP_METHOD: 'linear'
+  WARMUP_EPOCHS: 3  # 从10减少到3，更快达到目标学习率
+  WARMUP_FACTOR: 0.1  # 从0.01提高到0.1，预热起点更高
+  
+  LARGE_FC_LR: False
+  CHECKPOINT_PERIOD: 5
+  LOG_PERIOD: 20
+  EVAL_PERIOD: 5
+  WEIGHT_DECAY: 0.0001
+  WEIGHT_DECAY_BIAS: 0.0001
+  BIAS_LR_FACTOR: 2
+  
+  # 其他优化器参数
+  MOMENTUM: 0.9
+  GAMMA: 0.1
+  STEPS: (40, 70)  # 学习率衰减步长
+  MARGIN: 0.3
+  CENTER_LR: 0.5
+  CENTER_LOSS_WEIGHT: 0.0005
+  COSINE_MARGIN: 0.5
+  COSINE_SCALE: 30
+  SEED: 1234
+
+TEST:
+  EVAL: True
+  IMS_PER_BATCH: 256
+  RE_RANKING: False
+  K1: 20
+  K2: 6
+  LAMBDA_VALUE: 0.3
+  WEIGHT: ''
+  NECK_FEAT: 'before'
+  FEAT_NORM: 'yes'
+  DIST_MAT: 'dist_mat.npy'
+
+OUTPUT_DIR: 'logs/BallShow_competition_fast_start'
+
+# 优化说明：
+# 1. 提高BASE_LR从0.008到0.02，加速初期收敛
+# 2. 缩短WARMUP_EPOCHS从10到3，更快达到目标学习率
+# 3. 提高WARMUP_FACTOR从0.01到0.1，预热起点更高
+# 4. 这些调整应该能显著改善训练初期的收敛速度
