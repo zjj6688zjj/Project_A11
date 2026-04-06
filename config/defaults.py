@@ -182,6 +182,10 @@ _C.TEST.FEAT_NORM = 'yes'
 _C.TEST.DIST_MAT = "dist_mat.npy"
 # Whether calculate the eval score option: 'True', 'False'
 _C.TEST.EVAL = False
+# Re-ranking parameters (k-reciprocal encoding)
+_C.TEST.K1 = 20  # k1 for k-reciprocal encoding
+_C.TEST.K2 = 6   # k2 for k-reciprocal encoding
+_C.TEST.LAMBDA = 0.3  # Jaccard similarity weight
 # ---------------------------------------------------------------------------- #
 # Misc options
 # ---------------------------------------------------------------------------- #

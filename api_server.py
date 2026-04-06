@@ -1,4 +1,19 @@
+# ========== 全局UTF-8编码设置（修复Windows跨平台兼容）==========
+import sys
+import io
 import os
+
+# 强制UTF-8编码
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+os.environ['PYTHONIOENCODING'] = 'utf-8'
+os.environ['PYTHONLEGACYWINDOWSSTDIO'] = 'utf-8'
+
+# 设置默认编码
+import locale
+locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
+
+# ========== 原有导入 ==========
 import json
 import torch
 import numpy as np
@@ -60,11 +75,52 @@ def load_model(model_path):
 
     print(f"Loading model: {model_path}")
 
-    state_dict = torch.load(model_path, map_location=device)
+    # Linux训练的模型使用UTF-8，Windows训练的模型使用GBK
+    # 统一使用encoding='utf-8'以兼容Linux训练的模型
+    try:
+        state_dict = torch.load(model_path, map_location=device, weights_only=False, encoding='utf-8')
+    except Exception as e:
+        print(f"UTF-8 encoding load failed: {e}, trying without encoding...")
+        try:
+            state_dict = torch.load(model_path, map_location=device, weights_only=False)
+        except Exception as e2:
+            print(f"Standard load failed: {e2}, trying with pickle...")
+            import pickle
+            state_dict = torch.load(model_path, map_location=device, pickle_module=pickle)
 
     # 推断模型配置
     has_sie = any('sie_embed' in k for k in state_dict.keys())
     has_jpm = any('jpm' in k for k in state_dict.keys())
+    
+    # 打印 checkpoint 中的关键信息用于诊断
+    print(f"  Checkpoint keys count: {len(state_dict.keys())}")
+    pos_embed_shape = None
+    for k, v in state_dict.items():
+        if 'pos_embed' in k:
+            pos_embed_shape = v.shape
+            print(f"  Found {k}: shape={v.shape}")
+    
+    # 根据 pos_embed shape 推断原始训练配置
+    # pos_embed shape: [1, num_patches+1, 768]
+    # num_patches = h * w, 其中:
+    #   h = (H - 16) / stride_y + 1
+    #   w = (W - 16) / stride_x + 1
+    inferred_stride = None
+    if pos_embed_shape is not None:
+        num_patches = pos_embed_shape[1] - 1  # 减去 cls token
+        print(f"  Inferred num_patches (without cls): {num_patches}")
+        # 尝试常见的尺寸组合
+        # 256x128: (240/s+1) * (112/s+1) ≈ num_patches
+        # 384x128: (368/s+1) * (112/s+1) ≈ num_patches
+        for h in [256, 384]:
+            for w in [128]:
+                for stride in [16, 12, 8]:
+                    num_y = (h - 16) // stride + 1
+                    num_x = (w - 16) // stride + 1
+                    if num_y * num_x == num_patches:
+                        print(f"  => Inferred config: img_size=[{h},{w}], stride=[{stride},{stride}]")
+                        inferred_stride = [stride, stride]
+                        inferred_img_size = [h, w]
 
     # 加载配置
     from config.defaults import _C
@@ -79,34 +135,37 @@ def load_model(model_path):
         config_file = "configs/BallShow/vit_transreid_stride.yml" if has_sie else "configs/BallShow/vit_base.yml"
 
     def load_config_safe(config_path):
+        """安全加载配置文件，修复Windows GBK编码问题"""
+        # Monkey patch YACS merge_from_file to always use UTF-8
+        from yacs import config as yacs_config
+        original_merge_from_file = yacs_config.CfgNode.merge_from_file
+        
+        def patched_merge_from_file(self, cfg_filename):
+            """强制使用UTF-8编码读取yaml文件"""
+            with open(cfg_filename, "r", encoding="utf-8", errors="replace") as f:
+                cfg = self.load_cfg(f)
+            self.merge_from_other_cfg(cfg)
+        
+        # 应用patch
+        yacs_config.CfgNode.merge_from_file = patched_merge_from_file
+        
         try:
             new_cfg.merge_from_file(config_path)
-        except UnicodeDecodeError:
-            # If encoding error, try with explicit UTF-8 encoding
-            import tempfile
-            with open(config_path, 'rb') as src:
-                content = src.read()
-                # Try to decode with UTF-8, fallback to latin-1 for binary data
-                try:
-                    decoded = content.decode('utf-8')
-                except UnicodeDecodeError:
-                    decoded = content.decode('latin-1')
-                
-                # Write to temporary file
-                with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', suffix='.yml', delete=False) as tmp:
-                    tmp.write(decoded)
-                    tmp_path = tmp.name
-                
-                try:
-                    new_cfg.merge_from_file(tmp_path)
-                finally:
-                    # Clean up temporary file
-                    os.unlink(tmp_path)
+        finally:
+            # 恢复原始方法
+            yacs_config.CfgNode.merge_from_file = original_merge_from_file
     
     if os.path.exists(config_file):
         load_config_safe(config_file)
     else:
         load_config_safe("configs/BallShow/vit_base.yml")
+
+    # 应用从 checkpoint 推断的配置
+    if inferred_stride is not None:
+        print(f"  Applying inferred config: STRIDE_SIZE={inferred_stride}, SIZE_TRAIN={inferred_img_size}")
+        new_cfg.MODEL.STRIDE_SIZE = inferred_stride
+        new_cfg.INPUT.SIZE_TRAIN = inferred_img_size
+        new_cfg.INPUT.SIZE_TEST = inferred_img_size
 
     if has_sie:
         new_cfg.MODEL.SIE_CAMERA = True
@@ -267,9 +326,14 @@ def load_gallery_features(model, cfg, model_path):
 
     if os.path.exists(cache_file):
         print(f"Loading gallery features from cache: {cache_file}")
-        cache_data = np.load(cache_file)
-        gallery_features = cache_data['features']
-        gallery_paths = cache_data['paths'].tolist()
+        try:
+            cache_data = np.load(cache_file, allow_pickle=True)
+            gallery_features = cache_data['features']
+            gallery_paths = cache_data['paths'].tolist() if 'paths' in cache_data else []
+        except Exception:
+            print(f"Cache load failed, regenerating...")
+            os.unlink(cache_file)
+            return None, []
         print(f"[OK] Gallery features loaded from cache: shape={gallery_features.shape}")
         return gallery_features, gallery_paths
 

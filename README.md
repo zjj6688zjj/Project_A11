@@ -1,104 +1,85 @@
-### 基于复杂运动场景的篮球持球人身份重识别算法开发
+# 基于复杂运动场景的篮球持球人身份重识别算法开发
 
-#### 赛题背景
+## 文档目录
 
-本赛题要求在真实的”球秀“业务场景中检索特定持球人。相较于传统的行人重识别任务，本赛题针对与特定的篮球场景，若直接使用现有的成熟ReID算法会面临三大挑战：
+本项目文档已拆分为多个文件：
 
-​	1.**相似球衣区分：** 场上队友穿着完全相同的球衣，仅靠颜色无法区分。算法必须具备细粒度特征提取能力，依赖球衣号码（常被手臂或球体遮挡）、体态、护具、发型及鞋履颜色来进行区分。
+| 文档 | 说明 |
+:|------|------|
+| [README_main.md](README_main.md) | 项目主文档（赛题背景、结果汇总、配置对比、优化指南） |
+| [README_ensembling_models.md](README_ensembling_models.md) | 模型融合指南 |
+| [README_reranking.md](README_reranking.md) | Re-ranking 测试分析 |
+| [README_learning_rate_scheduler.md](README_learning_rate_scheduler.md) | 学习率调度器配置说明 |
+| [README_test_time_augmentation.md](README_test_time_augmentation.md) | TTA 测试分析与策略推荐 |
 
-​	2.**严重遮挡与姿态多变：** 持球人是防守方的重点照顾对象，常处于多人包夹（重叠遮挡）状态；同时，运球、上篮、投篮等动作导致身体姿态发生剧烈形变，与常规站立姿态差异巨大。
+---
 
-​	3.**环境干扰：** 比赛数据涵盖室内木地板（强反光）、室外塑胶场（复杂背景）、夜间灯光等多种环境。持球人的移动速度通常最快，导致图像极易产生运动模糊，丢失纹理细节。
+## 快速链接
 
-我们需要你针对相应挑战，设计高效鲁棒的算法，在不依赖连续轨迹追踪的前提下，仅凭外观特征在跨时刻的图像库中精准找回目标球员。
+### 当前最佳结果
 
-#### 实验结果
+| 评估指标 | 当前最佳结果 | 赛题达标要求 | 差距 |
+:|:--------:|:-----------:|:-----------:|:----:|
+| **mAP** | **91.4%** | >=91.5% | 差0.1% |
+| **Rank-1** | **94.2%** | >=94.0% | [OK] 已达标 |
 
-我们选取了更适合处理长距离依赖和保留细粒度特征的**TransReID**作为本赛题的基准模型，并在本赛题所提供的数据集上进行了测试，结果如下：
+### 快速开始
 
-|    **评估指标**     | **baseline结果** | **赛题达标要求** |
-| :-----------------: | :--------------: | :--------------: |
-|       **mAP**       |    **91.1%**     |     **≥91.5%**     |
-| **Rank-1 Accuracy** |    **93.6%**     |     **≥94%**     |
+```bash
+# 测试最佳模型
+python test.py --config_file configs/BallShow/rtx4090_final.yml TEST.WEIGHT logs/BallShow_rtx4090_final/transformer_checkpoint_153.pth
 
-#### 安装与使用
+# 使用TTA测试（测试时增强，推荐）
+python test_tta.py --config_file configs/BallShow/rtx4090_final.yml --weight logs/BallShow_rtx4090_final/transformer_checkpoint_153.pth --strategy all
 
-##### baseline源代码链接
+# 训练新模型
+python train.py --config_file configs/BallShow/rtx4090_sprint.yml
 
-本赛题基准基于**TransReID**实现，官方代码链接：https://github.com/damo-cv/TransReID
-
-##### 环境依赖
-
-```python
-Python 3.7+，PyTorch 1.7.1+
-# 其余依赖
-pip install timm yacs termcolor
-pip install -r requirements.txt
+# 从检查点继续微调
+python train.py --config_file configs/BallShow/rtx4090_from_final212model.yml --resume logs/BallShow_rtx4090_final/transformer_checkpoint_153.pth
 ```
 
-##### 数据准备
+---
 
-请将本赛题提供的训练集与测试集解压至data/BallShow/目录，并保持如下结构
+## 重要发现
 
-```
-data/BallShow/
-    ├── bounding_box_train/
-    ├── bounding_box_test/
-    └── query/
-```
+### TTA (Test-Time Augmentation) 测试
 
-##### 预训练权重
+TTA 是一种在推理阶段对图片进行增强的技术，可以提升预测稳定性。
 
-下载在ImageNet上预训练的Transformer模型：https://github.com/rwightman/pytorch-image-models/releases/download/v0.1-vitjx/jx_vit_base_p16_224-80ecf9dd.pth
+详见 [README_test_time_augmentation.md](README_test_time_augmentation.md)
 
-##### 路径修改
+### Re-ranking 配置无效 [WARNING]
 
-将项目configs文件夹的配置文件的相关路径设置为自己保存的路径！！
+训练时配置文件中的 `RE_RANKING: True` 是**无效的**！训练代码不使用这个参数。
 
-##### 训练与测试
+详见 [README_reranking.md](README_reranking.md)
 
-训练命令（推荐使用 `stride` 版本以保留更多细节）
+### 模型融合存在问题 [WARNING]
 
-```
-python train.py --config_file configs/BallShow/vit_transreid_stride.yml
-```
+直接使用 `final_simple_fusion.py` 融合后性能大幅下降，需要确保模型配置一致。
 
-断点续训命令
+详见 [README_ensembling_models.md](README_ensembling_models.md)
+
+---
+
+## 项目结构
 
 ```
-python train.py --config_file configs/BallShow/vit_transreid_stride.yml --resume logs/BallShow_vit_transreid_stride/transformer_checkpoint_40.pth
+TransReID-master/
+├── README_main.md                    # 主文档
+├── README_ensembling_models.md        # 模型融合指南
+├── README_reranking.md              # Re-ranking 分析
+├── README_learning_rate_scheduler.md # 学习率调度器说明
+├── README_test_time_augmentation.md  # TTA 测试分析
+├── configs/BallShow/                 # 所有配置文件
+├── logs/                            # 训练日志和检查点
+├── data/                            # 数据集
+├── ensemble_models.py                # 模型融合脚本
+├── final_simple_fusion.py           # 简单融合脚本
+├── test_tta.py                      # TTA 测试脚本
+├── run_tta_tests.py                 # 批量 TTA 测试
+├── summarize_tta_results.py         # TTA 结果汇总
+├── train.py / test.py               # 训练和测试脚本
+└── solver/                          # 优化器和调度器
 ```
-
-测试命令（测试单个模型）
-
-```
-python test.py --config_file configs/BallShow/vit_transreid_stride.yml TEST.WEIGHT 'logs/BallShow_vit_transreid_stride/transformer_checkpoint_120.pth'
-```
-
-测试命令（启用re-ranking）
-
-```
-python test.py --config_file configs/BallShow/vit_transreid_stride.yml TEST.WEIGHT 'logs/BallShow_vit_transreid_stride/transformer_checkpoint_120.pth' --reranking
-```
-
-批量测试命令（测试配置文件对应目录下所有checkpoint文件，启用re-ranking）
-
-```
-python test.py --config_file configs/BallShow/vit_transreid_stride.yml --test-all --reranking
-```
-
-#### 引用
-
-本赛题基准**TransReID**参考自：
-
-```
-@InProceedings{He_2021_ICCV,
-    author    = {He, Shuting and Luo, Hao and Wang, Pichao and Wang, Fan and Li, Hao and Jiang, Wei},
-    title     = {TransReID: Transformer-Based Object Re-Identification},
-    booktitle = {Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)},
-    month     = {October},
-    year      = {2021},
-    pages     = {15013-15022}
-}
-```
-

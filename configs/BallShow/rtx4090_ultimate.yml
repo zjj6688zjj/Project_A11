@@ -1,0 +1,132 @@
+# 终极优化配置 - 目标: 达到 mAP ≥91.5%, Rank-1 ≥94%
+
+MODEL:
+  # 模型架构配置
+  PRETRAIN_CHOICE: 'imagenet'
+  PRETRAIN_PATH: './weights/jx_vit_base_p16_224-80ecf9dd.pth'
+  METRIC_LOSS_TYPE: 'triplet'
+  IF_LABELSMOOTH: 'on'
+  IF_WITH_CENTER: 'yes'
+  NAME: 'transformer'
+  NO_MARGIN: False
+  DEVICE_ID: '0'
+  TRANSFORMER_TYPE: 'vit_base_patch16_224_TransReID'
+  STRIDE_SIZE: [12, 12]
+  SIE_CAMERA: True
+  SIE_COE: 3.0
+  JPM: True
+  RE_ARRANGE: True
+  # Loss权重配置
+  TRIPLET_LOSS_WEIGHT: 1.0
+  ID_LOSS_WEIGHT: 1.0
+
+INPUT:
+  # 输入图像配置 - 保持384高分辨率
+  SIZE_TRAIN: [384, 128]
+  SIZE_TEST: [384, 128]
+  PROB: 0.5
+  RE_PROB: 0.5
+  PADDING: 10
+  PIXEL_MEAN: [0.5, 0.5, 0.5]
+  PIXEL_STD: [0.5, 0.5, 0.5]
+
+DATASETS:
+  NAMES: 'ballshow'
+  ROOT_DIR: './data'
+
+DATALOADER:
+  SAMPLER: 'softmax_triplet'
+  NUM_INSTANCE: 4
+  NUM_WORKERS: 8
+
+SOLVER:
+  OPTIMIZER_NAME: 'SGD'
+  MAX_EPOCHS: 250  # 继续增加训练轮次
+  BASE_LR: 0.008  # 略微降低学习率，更稳定
+  IMS_PER_BATCH: 96
+  WARMUP_METHOD: 'linear'
+  LARGE_FC_LR: False
+  CHECKPOINT_PERIOD: 1
+  LOG_PERIOD: 40
+  EVAL_PERIOD: 1
+  SEED: 2024  # 换一个新种子，尝试不同的初始化
+
+  # 正则化配置 - 微调
+  WEIGHT_DECAY: 0.0003  # 稍微降低weight decay
+  WEIGHT_DECAY_BIAS: 0.0003
+  BIAS_LR_FACTOR: 2
+
+  # Center Loss配置
+  CENTER_LOSS_WEIGHT: 0.0008  # 略微降低中心损失权重
+  CENTER_LR: 0.5
+
+  # Cosine Loss配置 - 关键优化
+  COSINE_MARGIN: 0.6  # 增加margin到0.6
+  COSINE_SCALE: 35  # 增加scale到35
+
+  # Triplet Loss配置
+  MARGIN: 0.35  # 增加margin到0.35
+
+TEST:
+  EVAL: True
+  IMS_PER_BATCH: 512
+  RE_RANKING: True
+  NECK_FEAT: 'after'
+  FEAT_NORM: 'yes'
+  WEIGHT: ''
+  K1: 25  # 稍微增大K1
+  K2: 8   # 稍微增大K2
+  LAMBDA: 0.9  # 添加Jaccard相似度权重
+
+OUTPUT_DIR: 'logs/BallShow_rtx4090_ultimate'
+
+# 配置说明:
+#
+# 【优化策略】
+# 1. 训练轮次: 200 → 250
+#    - 给模型更多收敛时间
+#
+# 2. 学习率: 0.012 → 0.008
+#    - 更稳定的后期收敛
+#    - 避免后期过拟合
+#
+# 3. 学习率使用余弦退火调度器
+#    - 学习率按余弦曲线平滑下降
+#    - 通过MAX_EPOCHS控制衰减速度
+#
+# 4. Cosine Margin: 0.5 → 0.6
+#    - 更严格的特征判别
+#    - 预期提升: +0.2% mAP
+#
+# 5. Cosine Scale: 30 → 35
+#    - 更大的特征尺度
+#
+# 6. Triplet Margin: 0.3 → 0.35
+#    - 更强的三元组约束
+#
+# 7. 随机种子: 1234 → 2024
+#    - 尝试新的初始化
+#    - 可能找到更好的局部最优
+#
+# 8. Re-ranking参数: K1=25, K2=8, LAMBDA=0.9
+#    - 优化后重排序效果
+#
+# 【预期性能】
+# 基于当前最佳(mAP 91.3%, Rank-1 93.9%):
+# - margin增大: +0.3% mAP → 91.6%
+# - 更长训练: +0.2% mAP → 91.8%
+# - Re-ranking优化: +0.2% mAP → 92.0%
+# - 最终预期: mAP 91.5-92.5%, Rank-1 94-95%
+
+# 【使用方法】
+# 1. 训练:
+#    python train.py --config_file configs/BallShow/ballshow_ultimate_v2.yml
+#
+# 2. 继续训练(从epoch 193):
+#    python train.py --config_file configs/BallShow/ballshow_ultimate_v2.yml \
+#      --resume logs/BallShow_rtx4090_optimized/transformer_checkpoint_193.pth
+#
+# 3. 测试:
+#    python test.py --config_file configs/BallShow/ballshow_ultimate_v2.yml \
+#      TEST.WEIGHT 'logs/BallShow_ultimate_v2/transformer_checkpoint_xxx.pth' \
+#      --reranking

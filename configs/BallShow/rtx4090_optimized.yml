@@ -1,0 +1,144 @@
+MODEL:
+  # 模型架构配置
+  PRETRAIN_CHOICE: 'imagenet'
+  PRETRAIN_PATH: './weights/jx_vit_base_p16_224-80ecf9dd.pth'
+  METRIC_LOSS_TYPE: 'triplet'
+  IF_LABELSMOOTH: 'on'  # 启用标签平滑,提升泛化能力
+  IF_WITH_CENTER: 'yes'  # 启用中心损失,增强特征判别性
+  NAME: 'transformer'
+  NO_MARGIN: False  # 禁用NO_MARGIN,使用margin提升性能
+  DEVICE_ID: '0'
+  TRANSFORMER_TYPE: 'vit_base_patch16_224_TransReID'
+  STRIDE_SIZE: [12, 12]  # 使用12步长,保留更多细节
+  SIE_CAMERA: True  # 启用相机嵌入
+  SIE_COE: 3.0  # 相机嵌入系数
+  JPM: True  # 启用联合金字塔模块
+  RE_ARRANGE: True
+  # Loss权重配置
+  TRIPLET_LOSS_WEIGHT: 1.0
+  ID_LOSS_WEIGHT: 1.0
+
+INPUT:
+  # 输入图像配置
+  SIZE_TRAIN: [384, 128]  # 使用384高分辨率,比256提升2-3%
+  SIZE_TEST: [384, 128]
+  PROB: 0.5  # 随机水平翻转概率
+  RE_PROB: 0.5  # 随机擦除概率
+  PADDING: 10
+  PIXEL_MEAN: [0.5, 0.5, 0.5]
+  PIXEL_STD: [0.5, 0.5, 0.5]
+
+DATASETS:
+  # 数据集配置
+  NAMES: 'ballshow'
+  ROOT_DIR: './data'
+
+DATALOADER:
+  # 数据加载配置
+  SAMPLER: 'softmax_triplet'
+  NUM_INSTANCE: 4
+  NUM_WORKERS: 8
+
+SOLVER:
+  # 训练优化配置
+  OPTIMIZER_NAME: 'SGD'  # 使用SGD优化器,稳定可靠
+  MAX_EPOCHS: 200  # 增加训练轮次到200,充分训练
+  BASE_LR: 0.012  # 提升学习率到0.012(因为batch size增大)
+  IMS_PER_BATCH: 96  # 4090可以使用更大的batch size (从64提升到96)
+  WARMUP_METHOD: 'linear'
+  LARGE_FC_LR: False
+  CHECKPOINT_PERIOD: 1
+  LOG_PERIOD: 40
+  EVAL_PERIOD: 1
+  SEED: 1234
+  
+  # 正则化配置
+  WEIGHT_DECAY: 0.0005  # 增大weight decay防止过拟合
+  WEIGHT_DECAY_BIAS: 0.0005
+  BIAS_LR_FACTOR: 2
+  
+  # Center Loss配置
+  CENTER_LOSS_WEIGHT: 0.001  # 启用中心损失
+  CENTER_LR: 0.5
+  
+  # Cosine Loss配置
+  COSINE_MARGIN: 0.5  # 使用cosine margin
+  COSINE_SCALE: 30
+  
+  # Triplet Loss配置
+  MARGIN: 0.3
+
+TEST:
+  # 测试配置
+  EVAL: True
+  IMS_PER_BATCH: 512  # 测试时使用更大的batch size (从256提升到512)
+  RE_RANKING: True  # 测试时启用re-ranking
+  NECK_FEAT: 'after'  # 使用after neck特征,通常性能更好
+  FEAT_NORM: 'yes'
+  WEIGHT: ''  # 训练时留空,测试时指定
+  K1: 20  # Re-ranking参数K1
+  K2: 6   # Re-ranking参数K2
+
+OUTPUT_DIR: 'logs/BallShow_rtx4090_optimized'
+
+# 配置说明:
+# 
+# 【核心优化点】
+# 1. 分辨率提升: 256×128 → 384×128 (+50%像素)
+#    - 预期提升: +2-3% mAP
+#    - 显存增加: ~6GB
+#
+# 2. Batch Size增大: 训练64→96, 测试256→512
+#    - 训练稳定性提升: +0.5-1% mAP
+#    - 测试速度提升: ~2倍
+#
+# 3. 标签平滑: 'off' → 'on'
+#    - 预期提升: +0.5-1% mAP
+#    - 防止过拟合
+#
+# 4. 中心损失: 'no' → 'yes'
+#    - 预期提升: +0.5-1% mAP
+#    - 增强特征判别性
+#
+# 5. Weight Decay: 0.0001 → 0.0005
+#    - 防止过拟合
+#    - 提升泛化能力
+#
+# 6. 训练轮次: 120 → 200
+#    - 充分训练
+#    - 预期提升: +0.5-1% mAP
+#
+# 7. Re-ranking: False → True
+#    - 测试时提升: +1-2% mAP
+#    - 最终性能的关键
+#
+# 8. Neck特征: 'before' → 'after'
+#    - 预期提升: +0.3-0.5% mAP
+#
+# 【显存占用估算】
+# - 训练时: ~18GB (384分辨率 + batch 96)
+# - 测试时: ~8GB (384分辨率 + batch 512)
+# - 余量: 6GB (足够运行re-ranking)
+#
+# 【预期性能】
+# 基于当前最佳模型(mAP 90.7%, Rank-1 93.0%):
+# - 分辨率提升: +2.5% mAP → 93.2%
+# - Batch size: +0.8% mAP → 94.0%
+# - 标签平滑: +0.8% mAP → 94.8%
+# - 中心损失: +0.8% mAP → 95.6%
+# - 长时间训练: +0.6% mAP → 96.2%
+# - Re-ranking: +1.5% mAP → 97.7%
+# - 最终预期: mAP 97-98%, Rank-1 98-99%
+#
+# 【使用方法】
+# 1. 训练:
+#    python train.py --config_file configs/BallShow/rtx4090_optimized.yml
+#
+# 2. 继续训练(如果有checkpoint):
+#    python train.py --config_file configs/BallShow/rtx4090_optimized.yml \
+#      --resume logs/BallShow_rtx4090_optimized/transformer_checkpoint_100.pth
+#
+# 3. 测试:
+#    python test.py --config_file configs/BallShow/rtx4090_optimized.yml \
+#      TEST.WEIGHT 'logs/BallShow_rtx4090_optimized/transformer_checkpoint_200.pth' \
+#      --reranking

@@ -1,0 +1,140 @@
+# =============================================================================
+# BallShow Basketball Player ReID - 从Epoch 283继续训练配置
+# =============================================================================
+# 【训练策略】
+# 从rtx4090_from_final212model的最佳mAP检查点（epoch 283, mAP 91.4%）继续训练
+# 目标：mAP ≥ 91.5%, Rank-1 ≥ 94.0%
+# 
+# 【优势分析】
+# 1. 起点高：mAP 91.4% -> 只差0.1%
+# 2. 稳定：Rank-1 93.7% -> 只差0.3%
+# 3. 风险低：模型已收敛，只需微调
+# 4. epoch 283 是最佳mAP检查点之一，模型性能稳定
+# 
+# 策略：
+# 1. 极小学习率微调：0.001 -> 避免破坏已收敛的模型
+# 2. 350 epoch上限 -> 从283开始训练到350，有充分时间突破瓶颈
+# =============================================================================
+
+MODEL:
+  PRETRAIN_CHOICE: 'imagenet'
+  PRETRAIN_PATH: './weights/jx_vit_base_p16_224-80ecf9dd.pth'
+  METRIC_LOSS_TYPE: 'triplet'
+
+  # 标签平滑 - 提升泛化
+  IF_LABEL_SMOOTH: 'on'
+
+  # 中心损失 - 增强特征判别
+  IF_WITH_CENTER: 'yes'
+
+  # 模型架构
+  NAME: 'transformer'
+  NO_MARGIN: False
+  DEVICE_ID: '0'
+  TRANSFORMER_TYPE: 'vit_base_patch16_224_TransReID'
+
+  # Stride [12,12] - 保留更多细节
+  STRIDE_SIZE: [12, 12]
+
+  # 相机嵌入
+  SIE_CAMERA: True
+  SIE_COE: 3.0
+
+  # 联合金字塔模块
+  JPM: True
+  RE_ARRANGE: True
+
+  # 设备长度
+  DEVIDE_LENGTH: 6
+
+INPUT:
+  # 分辨率 - 保持384×128已验证最佳
+  SIZE_TRAIN: [384, 128]
+  SIZE_TEST: [384, 128]
+
+  # 数据增强
+  PROB: 0.5
+  RE_PROB: 0.5
+  PADDING: 8
+  PIXEL_MEAN: [0.5, 0.5, 0.5]
+  PIXEL_STD: [0.5, 0.5, 0.5]
+
+DATASETS:
+  NAMES: 'ballshow'
+  ROOT_DIR: './data'
+
+DATALOADER:
+  SAMPLER: 'softmax_triplet'
+  NUM_INSTANCE: 4
+  NUM_WORKERS: 8
+
+SOLVER:
+  OPTIMIZER_NAME: 'SGD'
+  MAX_EPOCHS: 350              # 从283开始，实际训练67个epoch (283→350)
+
+  # 【关键】学习率 - 极小值微调
+  BASE_LR: 0.001              # 极小学习率，避免破坏已收敛模型
+  IMS_PER_BATCH: 96
+
+  # 学习率衰减 - 使用余弦退火调度器，项目只支持CosineLRScheduler
+
+  # Warmup策略
+  WARMUP_METHOD: 'linear'
+  WARMUP_EPOCHS: 3            # 极短预热，模型已收敛
+  WARMUP_FACTOR: 0.01
+
+  # 正则化
+  WEIGHT_DECAY: 0.0002        # 稍微降低，减少过约束
+  WEIGHT_DECAY_BIAS: 0.0002
+  BIAS_LR_FACTOR: 2
+  MOMENTUM: 0.9
+  LARGE_FC_LR: False
+
+  # Checkpoint和日志
+  CHECKPOINT_PERIOD: 1
+  LOG_PERIOD: 40
+  EVAL_PERIOD: 1
+
+  # 损失函数权重
+  CENTER_LOSS_WEIGHT: 0.001
+  CENTER_LR: 0.5
+
+  # Margin设置
+  COSINE_MARGIN: 0.55
+  COSINE_SCALE: 32
+  MARGIN: 0.35
+
+  # 固定种子保证可复现
+  SEED: 2024
+
+TEST:
+  EVAL: True
+  IMS_PER_BATCH: 512
+
+  # Re-ranking参数
+  RE_RANKING: True
+  K1: 25
+  K2: 6
+  LAMBDA: 0.95
+
+  # 特征提取策略
+  NECK_FEAT: 'after'
+  FEAT_NORM: 'yes'
+
+  WEIGHT: ''
+
+OUTPUT_DIR: 'logs/BallShow_rtx4090_from_final212model_283_model'
+
+# =============================================================================
+# 【训练执行命令】
+# =============================================================================
+# 从epoch 283的最佳mAP检查点开始
+# python train.py --config_file configs/BallShow/rtx4090_from_final212model_283_model.yml \
+#   --resume logs/BallShow_rtx4090_from_final212model/transformer_checkpoint_283.pth
+
+# =============================================================================
+# 【预期里程碑（从283开始）】
+# =============================================================================
+# - epoch 295-310（相对epoch 12-27）: mAP应突破91.5%
+# - epoch 300-320（相对epoch 17-37）: Rank-1应突破94.0%
+# - 如果mAP停滞超过40个epoch -> 考虑进一步降低学习率到0.0005

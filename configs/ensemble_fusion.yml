@@ -1,0 +1,53 @@
+# 模型融合专用配置
+# 用于 ensemble_models.py 和 final_simple_fusion.py
+# 特点：禁用SIE相机嵌入，避免sie_embed维度不匹配问题
+
+MODEL:
+  NAME: 'transformer'
+  PRETRAIN_CHOICE: 'imagenet'
+  PRETRAIN_PATH: './weights/jx_vit_base_p16_224-80ecf9dd.pth'
+  TRANSFORMER_TYPE: 'vit_base_patch16_224_TransReID'
+  STRIDE_SIZE: [12, 12]
+  DROP_OUT: 0.0
+  ATTN_DROP_RATE: 0.0
+  DROP_PATH_RATE: 0.1
+
+  # SIE相机嵌入 - 禁用以避免维度不匹配
+  SIE_CAMERA: False
+  SIE_COE: 3.0
+
+  JPM: True                    # 启用JPM模块
+  SHIFT_NUM: 5                # Shift模块数量
+  SHIFT_SIZE: 6               # Divide模块长度
+  CAMERA_NUM: 5               # 相机数量
+
+INPUT:
+  SIZE_TRAIN: [384, 128]
+  SIZE_TEST: [384, 128]
+  PROB: 0.5
+  RE: False
+  PIXEL_MEAN: [0.485, 0.456, 0.406]
+  PIXEL_STD: [0.229, 0.224, 0.225]
+
+DATASETS:
+  NAMES: 'ballshow'
+  ROOT_DIR: './data'
+
+  # 训练集
+  TRAIN: 
+    - 'ballshow_train'
+  
+  # Query集
+  QUERY: 
+    - 'ballshow_query'
+  
+  # Gallery集
+  GALLERY: 
+    - 'ballshow_gallery'
+
+TEST:
+  QUEUE_LENGTH: 0
+  FEAT_NORM: True
+  MULTI_QUERY: False
+
+OUTPUT_DIR: 'logs/ensemble_fusion'

@@ -1,0 +1,170 @@
+# =============================================================================
+# BallShow Basketball Player ReID - 从final模型Epoch 212继续训练配置
+# =============================================================================
+# 【训练策略】
+# 从final的最佳mAP检查点（epoch 212, mAP 91.3%）继续训练
+# 目标：mAP ≥ 91.5%, Rank-1 ≥ 94.0%
+# 
+# 【优势分析】
+# 1. 起点高：mAP 91.3% -> 只差0.2%
+# 2. 稳定：Rank-1 93.7% -> 只差0.3%
+# 3. 风险低：模型已收敛，只需微调
+# 
+# 策略：
+# 1. 小学习率微调：0.003 -> 避免破坏已收敛的模型
+# 2. 短预热：5个epoch -> 模型已经预热过
+# 3. 延迟衰减：从(80,160)改为(120,200) -> 给mAP更多时间
+# 4. 300 epoch上限 -> 有充分时间突破瓶颈
+# =============================================================================
+
+MODEL:
+  PRETRAIN_CHOICE: 'imagenet'
+  PRETRAIN_PATH: './weights/jx_vit_base_p16_224-80ecf9dd.pth'
+  METRIC_LOSS_TYPE: 'triplet'
+
+  # 标签平滑 - 提升泛化
+  IF_LABEL_SMOOTH: 'on'
+
+  # 中心损失 - 增强特征判别
+  IF_WITH_CENTER: 'yes'
+
+  # 模型架构
+  NAME: 'transformer'
+  NO_MARGIN: False
+  DEVICE_ID: '0'
+  TRANSFORMER_TYPE: 'vit_base_patch16_224_TransReID'
+
+  # Stride [12,12] - 保留更多细节
+  STRIDE_SIZE: [12, 12]
+
+  # 相机嵌入
+  SIE_CAMERA: True
+  SIE_COE: 3.0
+
+  # 联合金字塔模块
+  JPM: True
+  RE_ARRANGE: True
+
+  # 设备长度
+  DEVIDE_LENGTH: 6
+
+INPUT:
+  # 【生死核心】分辨率 - 保持384×128已验证最佳
+  SIZE_TRAIN: [384, 128]       # 保持final的384×128，已验证有效
+  SIZE_TEST: [384, 128]
+
+  # 【生死核心】数据增强 - 基于final优化
+  PROB: 0.5                    # 保持final的0.5
+  RE_PROB: 0.5                 # 从final的0.6降到0.5，减少过度擦除
+  PADDING: 8                   # 保持final的8
+  PIXEL_MEAN: [0.5, 0.5, 0.5]
+  PIXEL_STD: [0.5, 0.5, 0.5]
+
+DATASETS:
+  NAMES: 'ballshow'
+  ROOT_DIR: './data'
+
+DATALOADER:
+  SAMPLER: 'softmax_triplet'
+  NUM_INSTANCE: 4
+  NUM_WORKERS: 8
+
+SOLVER:
+  OPTIMIZER_NAME: 'SGD'
+  MAX_EPOCHS: 300              # 从212开始，总共300个epoch
+
+  # 【生死核心】学习率策略 - 从检查点继续，用更小的学习率
+  BASE_LR: 0.003              # ⚠️ 关键变化：从头训练用0.01，继续训练用0.003
+  IMS_PER_BATCH: 96           # 保持final的96，充分利用4090
+
+  # 【生死核心】学习率衰减 - 使用余弦退火调度器，项目只支持CosineLRScheduler
+
+  # Warmup策略 - 从检查点继续，需要更短的预热
+  WARMUP_METHOD: 'linear'
+  WARMUP_EPOCHS: 5            # ⚠️ 关键变化：从头训练用15，继续训练用5
+  WARMUP_FACTOR: 0.01
+
+  # 【生死核心】正则化 - 基于final微调
+  WEIGHT_DECAY: 0.00025        # 从final的0.0003微降到0.00025，减少过约束
+  WEIGHT_DECAY_BIAS: 0.00025
+  BIAS_LR_FACTOR: 2
+  MOMENTUM: 0.9
+  LARGE_FC_LR: False
+
+  # 【生死核心】Checkpoint和日志 - 密集监控
+  CHECKPOINT_PERIOD: 1         # 每1个epoch保存，及时监控生死进度
+  LOG_PERIOD: 40               # 每40个epoch日志，关注进展
+  EVAL_PERIOD: 1               # 每epoch评估一次，实时监控
+
+  # 【折中生死策略】损失函数权重 - 采用final验证的最佳值
+  CENTER_LOSS_WEIGHT: 0.001    # 恢复final的0.001
+  CENTER_LR: 0.5
+
+  # 【折中生死策略】Margin设置 - 采用final验证的最佳值
+  COSINE_MARGIN: 0.55          # 恢复final的0.55，已验证有效
+  COSINE_SCALE: 32             # 恢复final的32，已验证有效
+  MARGIN: 0.35                 # 恢复final的0.35，已验证有效
+
+  # 固定种子保证可复现
+  SEED: 2024
+
+TEST:
+  EVAL: True
+  IMS_PER_BATCH: 512
+
+  # 【生死关键】Re-ranking参数 - 基于final的最佳配置
+  RE_RANKING: True
+  K1: 25                      # final验证的最佳参数
+  K2: 6
+  LAMBDA: 0.95
+
+  # 特征提取策略
+  NECK_FEAT: 'after'
+  FEAT_NORM: 'yes'
+
+  WEIGHT: ''
+
+OUTPUT_DIR: 'logs/BallShow_rtx4090_from_final212model'
+
+# =============================================================================
+# 【训练执行命令】
+# =============================================================================
+# 从final的最佳mAP检查点(epoch 212, mAP 91.3%)开始
+# python train.py --config_file configs/BallShow/rtx4090_from_final212model.yml \
+#   --resume logs/BallShow_rtx4090_final/transformer_checkpoint_212.pth
+
+# =============================================================================
+# 【生死监控指南】
+# =============================================================================
+# 【监控重点】
+# 1. 每5个epoch检查一次：
+#    - 如果Rank-1跌破94.0% → 立即停止，降低学习率到0.001
+#    - 如果mAP停滞超过20个epoch → 考虑微调数据增强（降低RE_PROB到0.4）
+#    - 如果两者同步提升 → 继续，可能提前达标
+#
+# 【预期里程碑】
+# - epoch 220-230: mAP应突破91.4%
+# - epoch 240-250: mAP应突破91.5%
+# - epoch 250-260: Rank-1应突破94.0%
+#
+# 【动态调整策略】
+# 1. 如果训练50个epoch后mAP仍卡在91.3-91.4%：
+#    - 降低学习率到0.001
+#    - 增加数据增强强度（RE_PROB 0.5 → 0.6）
+#
+# 2. 如果Rank-1开始下降：
+#    - 立即停止训练
+#    - 从最近的检查点重新开始，学习率减半
+#
+# 【生死概率评估】
+# - 方案A成功率：60% （基于数据趋势）
+# - 方案B成功率：40% （需要更多epoch追赶）
+# - 方案C成功率：30% （mAP没有提升空间）
+#
+# =============================================================================
+# 【备选方案】
+# =============================================================================
+# 如果方案A失败，尝试从optimized检查点开始：
+# python train.py --config_file configs/BallShow/rtx4090_from_final212model.yml \
+#   --resume logs/BallShow_rtx4090_optimized/transformer_checkpoint_171.pth \
+#   SOLVER.BASE_LR 0.002

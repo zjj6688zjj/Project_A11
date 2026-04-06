@@ -1,4 +1,5 @@
 import os
+import torch
 from config import cfg
 import argparse
 from datasets import make_dataloader
@@ -109,19 +110,30 @@ if __name__ == "__main__":
 
     if args.config_file != "":
         logger.info("Loaded configuration file {}".format(args.config_file))
-        # Fix encoding issue for reading config file
+        # 直接输出配置文件内容，使用安全编码方式
         try:
-            with open(args.config_file, 'r', encoding='utf-8') as cf:
-                config_str = "\n" + cf.read()
-                logger.info(config_str)
-        except UnicodeDecodeError:
+            # 使用二进制读取，然后解码，避免编码问题
+            with open(args.config_file, 'rb') as cf:
+                raw_bytes = cf.read()
+            # 尝试UTF-8解码，如果失败则使用GBK，再失败则使用latin-1
             try:
-                with open(args.config_file, 'r', encoding='gbk') as cf:
-                    config_str = "\n" + cf.read()
-                    logger.info(config_str)
+                config_str = raw_bytes.decode('utf-8')
             except UnicodeDecodeError:
-                # Skip config file display if encoding fails
-                logger.info("Config file loaded (encoding details skipped due to charset issues)")
+                try:
+                    config_str = raw_bytes.decode('gbk')
+                except UnicodeDecodeError:
+                    config_str = raw_bytes.decode('latin-1', errors='replace')
+            
+            # 输出配置文件内容（原样输出，保持格式）
+            logger.info("\n" + config_str)
+            
+        except Exception as e:
+            # 如果出现异常，跳过配置文件输出
+            logger.info("Config file loaded (skipping content display due to error: {})".format(str(e)))
+    # 添加分隔线，然后输出解析后的配置
+    logger.info("=" * 70)
+    logger.info("Parsed Configuration (Key-Value Pairs):")
+    logger.info("=" * 70)
     logger.info("Running with config:\n{}".format(cfg))
 
     os.environ['CUDA_VISIBLE_DEVICES'] = str(cfg.MODEL.DEVICE_ID)
@@ -162,8 +174,19 @@ if __name__ == "__main__":
 
         logger.info(f"\nTesting with weight: {weight_path}")
 
-        # 加载权重
-        model.load_param(weight_path)
+        # 加载权重 - 处理融合模型格式（包含 'state_dict' 键）
+        import tempfile
+        import shutil
+        temp_weight_path = weight_path
+        
+        checkpoint = torch.load(weight_path, map_location='cpu')
+        if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+            # 融合模型格式，提取 state_dict
+            temp_dir = tempfile.gettempdir()
+            temp_weight_path = os.path.join(temp_dir, 'temp_fused_model.pth')
+            torch.save(checkpoint['state_dict'], temp_weight_path)
+        
+        model.load_param(temp_weight_path)
 
         if cfg.DATASETS.NAMES == 'VehicleID':
             for trial in range(10):

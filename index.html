@@ -175,12 +175,15 @@
             </h1>
             <p class="text-sm mt-1 mono text-gray-500">Image Retrieval System v2.0</p>
         </div>
-        <div class="flex gap-4 text-xs mono text-gray-400">
-            <span class="flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full bg-green-500 pulse-ring"></span>
-                System Ready
+        <div class="flex flex-col gap-2 text-xs">
+            <span id="web-status" class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-yellow-500 pulse-ring"></span>
+                <span class="text-yellow-400">网页: 等待加载</span>
             </span>
-            <span id="api-status">API: 等待连接</span>
+            <span id="api-status" class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-yellow-500 pulse-ring"></span>
+                <span class="text-yellow-400">API: 等待连接</span>
+            </span>
         </div>
     </header>
 
@@ -788,7 +791,9 @@
             state.apiConfig.extractPort = document.getElementById('port-extract').value;
             state.apiConfig.searchPort = document.getElementById('port-search').value;
             
-            document.getElementById('api-status').textContent = `API: ${state.apiConfig.baseUrl}`;
+            // 保存后重新加载模型列表
+            updateApiStatus('loading');
+            loadModelList();
             closeApiModal();
         }
 
@@ -806,7 +811,11 @@
         async function loadModelList() {
             try {
                 // 从后端API获取模型列表
-                const response = await fetch(`${state.apiConfig.baseUrl}:${state.apiConfig.extractPort}/api/models`);
+                const apiUrl = `${state.apiConfig.baseUrl}:${state.apiConfig.extractPort}/api/models`;
+                console.log('正在请求模型列表:', apiUrl);
+                
+                const response = await fetch(apiUrl);
+                console.log('响应状态:', response.status, response.statusText);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
@@ -814,6 +823,9 @@
                 
                 const data = await response.json();
                 const modelList = data.models;
+                
+                // 成功获取模型后，更新API状态
+                updateApiStatus('success', state.apiConfig.baseUrl + ':' + state.apiConfig.extractPort);
                 
                 const modelListContainer = document.getElementById('model-list');
                 modelListContainer.innerHTML = '';
@@ -860,6 +872,8 @@
                 
             } catch (error) {
                 console.error('Failed to load model list:', error);
+                updateApiStatus('error');
+                
                 const modelListContainer = document.getElementById('model-list');
                 modelListContainer.innerHTML = `
                     <div class="flex items-center justify-center py-8 text-red-400">
@@ -872,8 +886,47 @@
             }
         }
 
+        // 网页状态管理
+        function updateWebStatus(status, message) {
+            const webStatusEl = document.getElementById('web-status');
+            const dot = webStatusEl.querySelector('span:first-child');
+            const text = webStatusEl.querySelector('span:last-child');
+            const statusMap = {
+                'loading': { text: '网页: 等待加载', color: 'text-yellow-400', dot: 'bg-yellow-500' },
+                'success': { text: '网页: 加载成功', color: 'text-green-400', dot: 'bg-green-500' },
+                'error': { text: '网页: 加载失败', color: 'text-red-400', dot: 'bg-red-500' }
+            };
+            const config = statusMap[status] || statusMap['loading'];
+            text.textContent = message ? `网页: ${message}` : config.text;
+            text.className = config.color;
+            dot.className = `w-2 h-2 rounded-full ${config.dot} pulse-ring`;
+        }
+
+        // API状态管理
+        function updateApiStatus(status, message) {
+            const apiStatusEl = document.getElementById('api-status');
+            const dot = apiStatusEl.querySelector('span:first-child');
+            const text = apiStatusEl.querySelector('span:last-child');
+            const statusMap = {
+                'loading': { text: 'API: 等待连接', color: 'text-yellow-400', dot: 'bg-yellow-500' },
+                'success': { text: `API: 连接成功 ${message}`, color: 'text-green-400', dot: 'bg-green-500' },
+                'error': { text: 'API: 连接失败', color: 'text-red-400', dot: 'bg-red-500' }
+            };
+            const config = statusMap[status] || statusMap['loading'];
+            text.textContent = config.text;
+            text.className = config.color;
+            dot.className = `w-2 h-2 rounded-full ${config.dot} pulse-ring`;
+        }
+
         // Initialize
         searchBtn.disabled = true;
+        
+        // 网页加载成功
+        window.addEventListener('load', () => {
+            updateWebStatus('success');
+        });
+        
+        // 加载模型列表
         loadModelList();
     </script>
 </body>

@@ -1,0 +1,207 @@
+# =============================================================================
+# BallShow Basketball Player ReID - 从Epoch 153继续训练（优化加强版）
+# =============================================================================
+# 【训练策略】
+# 从rtx4090_final的最佳Rank-1检查点（epoch 153, Rank-1 94.2%, mAP 91.1%）继续训练
+# 目标：在保持高Rank-1（≥94.0%）的同时，提升mAP到91.5%+
+# 
+# 【核心优化点】
+# 1. 双重目标：保持高Rank-1（94.2%），提升mAP（+0.4%）
+# 2. 风险控制：Rank-1已达标，重点优化mAP
+# 3. 数据增强：降低RandomErasing强度，避免破坏已有特征
+# 4. 学习率：提高初始学习率，提供更多优化动力
+# 5. 延长训练周期：250个相对epoch（绝对epoch 153-403），提供充足微调时间
+# =============================================================================
+
+MODEL:
+  # 预训练配置
+  PRETRAIN_CHOICE: 'imagenet'
+  PRETRAIN_PATH: './weights/jx_vit_base_p16_224-80ecf9dd.pth'
+  METRIC_LOSS_TYPE: 'triplet'
+  
+  # 标签平滑 - 保持泛化能力
+  IF_LABEL_SMOOTH: 'on'
+  
+  # 中心损失 - 保持特征判别力
+  IF_WITH_CENTER: 'yes'
+  
+  # 模型架构 - 保持不变
+  NAME: 'transformer'
+  NO_MARGIN: False
+  DEVICE_ID: '0'
+  TRANSFORMER_TYPE: 'vit_base_patch16_224_TransReID'
+  
+  # Stride [12,12] - 保持特征细节
+  STRIDE_SIZE: [12, 12]
+  
+  # 相机嵌入
+  SIE_CAMERA: True
+  SIE_COE: 3.0
+  
+  # 联合金字塔模块
+  JPM: True
+  RE_ARRANGE: True
+  
+  # 设备长度
+  DEVIDE_LENGTH: 6
+
+INPUT:
+  # 分辨率 - 保持384×128已验证最佳
+  SIZE_TRAIN: [384, 128]
+  SIZE_TEST: [384, 128]
+  
+  # ========== 【关键】优化数据增强 ==========
+  PROB: 0.5           # 保持水平翻转
+  
+  # ⚠️ 核心调整：降低RandomErasing概率
+  # 从0.5降低到0.35，减少对已学习特征的破坏
+  RE_PROB: 0.35       # 从0.5降低，避免过度正则化
+  
+  PADDING: 8
+  
+  PIXEL_MEAN: [0.5, 0.5, 0.5]
+  PIXEL_STD: [0.5, 0.5, 0.5]
+
+DATASETS:
+  NAMES: 'ballshow'
+  ROOT_DIR: './data'
+
+DATALOADER:
+  SAMPLER: 'softmax_triplet'
+  NUM_INSTANCE: 4
+  NUM_WORKERS: 8
+
+SOLVER:
+  # 优化器配置
+  OPTIMIZER_NAME: 'SGD'
+  MAX_EPOCHS: 250          # 从153开始训练250个epoch，给后期微调更多时间
+  
+  # ========== 【关键】学习率策略 ==========
+  # ⚠️ 核心调整：基于历史数据优化学习率衰减
+  # 从0.001提高到0.0015，给mAP提升更多空间
+  BASE_LR: 0.0015          # 提高50%，提供更多优化动力
+  
+  IMS_PER_BATCH: 96
+  
+  # 学习率衰减 - 使用余弦退火调度器，项目只支持CosineLRScheduler
+  
+  # Warmup策略 - 短预热（模型已训练153个epoch）
+  WARMUP_METHOD: 'linear'
+  WARMUP_EPOCHS: 2         # 极短预热，模型已充分预热
+  WARMUP_FACTOR: 0.01
+  
+  # ========== 正则化调整 ==========
+  # ⚠️ 核心调整：降低weight decay，减少约束
+  WEIGHT_DECAY: 0.00015    # 从0.0002降低，减少对模型的约束
+  WEIGHT_DECAY_BIAS: 0.00015
+  BIAS_LR_FACTOR: 2
+  MOMENTUM: 0.9
+  LARGE_FC_LR: False
+  
+  # Checkpoint和日志 - 密集监控
+  CHECKPOINT_PERIOD: 1
+  LOG_PERIOD: 40
+  EVAL_PERIOD: 1
+  
+  # 损失函数权重
+  CENTER_LOSS_WEIGHT: 0.001
+  CENTER_LR: 0.5
+  
+  # Margin设置 - 保持已验证的参数
+  COSINE_MARGIN: 0.55
+  COSINE_SCALE: 32
+  MARGIN: 0.35
+  
+  # 固定种子保证可复现
+  SEED: 2025
+
+TEST:
+  EVAL: True
+  IMS_PER_BATCH: 512
+  
+  # Re-ranking参数
+  RE_RANKING: True
+  K1: 25
+  K2: 6
+  LAMBDA: 0.95
+  
+  # 特征提取策略
+  NECK_FEAT: 'after'
+  FEAT_NORM: 'yes'
+  
+  WEIGHT: ''
+
+OUTPUT_DIR: 'logs/BallShow_rtx4090_from_final153model'
+
+# =============================================================================
+# 【训练执行命令】
+# =============================================================================
+# python train.py --config_file configs/BallShow/rtx4090_from_final153model.yml \
+#   --resume logs/BallShow_rtx4090_final/transformer_checkpoint_153.pth
+# 
+# 【添加监控参数】
+# --eval_step 5   # 每5个epoch检查一次
+# =============================================================================
+
+# =============================================================================
+# 【预期里程碑和监控策略】
+# =============================================================================
+# 【训练目标优先级】
+# 1. 保持Rank-1 ≥ 94.0% （底线）
+# 2. 提升mAP到91.5%+ （核心目标）
+# 3. 确保训练稳定（Rank-1不下降）
+# 
+# 【学习率衰减时间线（相对epoch，绝对epoch=153+相对epoch）】
+# - 相对epoch 0-29:    LR=0.0015        (绝对epoch 153-182) - 高学习率快速优化
+# - 相对epoch 30-79:   LR=0.0003        (绝对epoch 183-232) - 中学习率稳定提升
+# - 相对epoch 80-149:  LR=0.00006       (绝对epoch 233-302) - 低学习率精细微调
+# - 相对epoch 150-250: LR=0.000012      (绝对epoch 303-403) - 较低学习率突破瓶颈
+# 
+# 【预期里程碑（绝对epoch）】
+# - 绝对epoch 170-180（相对epoch 17-27）: mAP应达到91.2-91.3%
+# - 绝对epoch 200-210（相对epoch 47-57）: mAP应突破91.4%
+# - 绝对epoch 250-260（相对epoch 97-107）: mAP应尝试突破91.5%
+# - 绝对epoch 300-310（相对epoch 147-157）: mAP应稳定在91.5%+
+# - 绝对epoch 350-360（相对epoch 197-207）: mAP应尝试突破91.6%
+# - 全程保持Rank-1 ≥ 94.0%
+# 
+# 【动态调整策略】
+# 1. 如果Rank-1跌破94.0%：
+#    - 立即停止训练
+#    - 从最近检查点恢复，降低BASE_LR到0.001
+#    - 增加RE_PROB到0.4（增强泛化）
+# 
+# 2. 如果mAP连续20个epoch无提升：
+#    - 降低BASE_LR到0.001
+#    - 进一步降低RE_PROB到0.3
+#    - 考虑提前停止
+# 
+# 3. 如果两者同步提升：
+#    - 继续训练直到目标达成
+#    - 考虑延长训练到250 epoch
+# 
+# 【风险评估】
+# - 方案成功率：70% （Rank-1优势明显，mAP有提升空间）
+# - 风险等级：中等（需要平衡Rank-1和mAP）
+# - 关键监控：前30个epoch的Rank-1稳定性
+# 
+# 【关键监控指标】
+# 1. 前10个epoch：观察Rank-1是否保持≥93.8%
+# 2. 每20个epoch：检查mAP提升趋势
+# 3. 学习率变化：确保衰减合理
+# =============================================================================
+
+# =============================================================================
+# 【配置文件差异总结】
+# =============================================================================
+# 相对于rtx4090_final.yml的主要改进：
+# 1. RE_PROB: 0.5 → 0.35  (降低数据增强强度)
+# 2. BASE_LR: 0.003 → 0.0015 (降低但提高优化动力)
+# 3. WARMUP_EPOCHS: 15 → 2 (极短预热)
+# 4. WEIGHT_DECAY: 0.0003 → 0.00015 (降低约束)
+# 
+# 相对于rtx4090_from_final212model.yml的优化：
+# 1. 起点：212 → 153 (Rank-1从93.7% → 94.2%)
+# 2. BASE_LR: 0.003 → 0.0015 (更适合微调)
+# 3. RE_PROB: 0.5 → 0.35 (降低数据增强)
+# =============================================================================

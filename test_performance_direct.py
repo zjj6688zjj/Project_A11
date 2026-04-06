@@ -20,6 +20,53 @@ from config import cfg as default_cfg
 from config.defaults import _C
 from copy import deepcopy
 
+# 修复Windows下yacs读取UTF-8编码YAML文件的问题
+import yacs.config as yacs_config
+_original_load_cfg = yacs_config.CfgNode.load_cfg
+
+def _fixed_load_cfg(cfg_file_obj_or_str):
+    """修复yacs的load_cfg方法，支持UTF-8编码"""
+    if isinstance(cfg_file_obj_or_str, str):
+        # 如果是文件路径，使用UTF-8编码读取
+        if os.path.exists(cfg_file_obj_or_str):
+            with open(cfg_file_obj_or_str, 'r', encoding='utf-8') as f:
+                return yacs_config.CfgNode._load_cfg_from_yaml_str(f.read())
+        else:
+            return _original_load_cfg(cfg_file_obj_or_str)
+    else:
+        # 如果是文件对象，使用UTF-8编码读取
+        return yacs_config.CfgNode._load_cfg_from_yaml_str(cfg_file_obj_or_str.read())
+
+yacs_config.CfgNode.load_cfg = staticmethod(_fixed_load_cfg)
+
+# 同时修复merge_from_file方法
+_original_merge_from_file = yacs_config.CfgNode.merge_from_file
+
+def _flatten_cfg_to_list(cfg, parent_key=''):
+    """将CfgNode展平为扁平键值对列表 [key1, value1, key2, value2, ...]"""
+    items = []
+    if isinstance(cfg, yacs_config.CfgNode):
+        for k, v in cfg.items():
+            new_key = f"{parent_key}.{k}" if parent_key else k
+            items.extend(_flatten_cfg_to_list(v, new_key))
+    else:
+        items.append(parent_key)
+        items.append(cfg)
+    return items
+
+def _fixed_merge_from_file(self, config_file):
+    """修复yacs的merge_from_file方法，支持UTF-8编码"""
+    if os.path.exists(config_file):
+        with open(config_file, 'r', encoding='utf-8') as f:
+            cfg = yacs_config.CfgNode._load_cfg_from_yaml_str(f.read())
+            # 将CfgNode展平为键值对列表
+            flat_list = _flatten_cfg_to_list(cfg)
+            self.merge_from_list(flat_list)
+    else:
+        return _original_merge_from_file(self, config_file)
+
+yacs_config.CfgNode.merge_from_file = _fixed_merge_from_file
+
 
 def get_last_checkpoint_from_logs():
     """获取logs目录下每个子文件夹中最后一个pth文件"""
@@ -113,6 +160,35 @@ def load_model_direct(model_path, device):
     has_sie = any('sie_embed' in k for k in state_dict.keys())
     has_jpm = any('jpm' in k for k in state_dict.keys())
 
+    # 从checkpoint推断stride大小
+    pos_embed_shape = None
+    for k in state_dict.keys():
+        if 'pos_embed' in k:
+            pos_embed_shape = state_dict[k].shape  # [1, N, 768]
+            break
+    
+    # 根据pos_embed推断stride和输入尺寸
+    # pos_embed长度 N = (H/stride_h + 1) * (W/stride_w + 1) + 1 (cls token)
+    # 默认256x128: stride 12 -> 21x10=211; stride 16 -> 16x8=129
+    inferred_stride = [12, 12]  # 默认
+    inferred_height, inferred_width = 256, 128  # 默认
+    
+    if pos_embed_shape is not None:
+        num_patches = pos_embed_shape[1] - 1  # 减去cls token
+        # 尝试匹配不同的stride配置
+        stride_configs = {
+            (12, 12): (21, 10),  # -> 211 patches
+            (16, 16): (16, 8),   # -> 129 patches
+            (14, 14): (18, 9),   # -> 163 patches
+        }
+        for stride, (h, w) in stride_configs.items():
+            if num_patches == h * w:
+                inferred_stride = list(stride)
+                inferred_height = h * stride[0]
+                inferred_width = w * stride[1]
+                print(f"  从checkpoint推断: stride={inferred_stride}, 输入尺寸={inferred_height}x{inferred_width}")
+                break
+    
     # 加载配置
     new_cfg = deepcopy(_C)
     model_dir = os.path.dirname(model_path)
@@ -132,6 +208,11 @@ def load_model_direct(model_path, device):
     if has_sie:
         new_cfg.MODEL.SIE_CAMERA = True
         new_cfg.MODEL.SIE_VIEW = True
+
+    # 使用推断的stride和尺寸覆盖配置
+    new_cfg.MODEL.STRIDE_SIZE = inferred_stride
+    new_cfg.INPUT.SIZE_TRAIN = [inferred_height, inferred_width]
+    new_cfg.INPUT.SIZE_TEST = [inferred_height, inferred_width]
 
     new_cfg.freeze()
 
