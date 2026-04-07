@@ -20,7 +20,7 @@ MODEL:
   METRIC_LOSS_TYPE: 'triplet'
   
   # 标签平滑 - 保持泛化能力
-  IF_LABEL_SMOOTH: 'on'
+  IF_LABELSMOOTH: 'on'
   
   # 中心损失 - 保持特征判别力
   IF_WITH_CENTER: 'yes'
