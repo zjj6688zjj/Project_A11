@@ -1,0 +1,47 @@
+======================================================================
+YML配置文件与Logs文件夹对应关系
+======================================================================
+生成时间: 2026-04-11 17:27:23
+======================================================================
+
+【统计】
+总配置文件数: 25
+已训练: 23
+未训练: 2
+
+======================================================================
+【已训练的配置文件】(23个)
+----------------------------------------------------------------------
+序号     YML文件                                                   Logs文件夹路径                                    
+------------------------------------------------------------------------------------------------------------------------
+1      ballshow_competition_384_optimized.yml                  logs/BallShow_competition_384_optimized      
+2      ballshow_competition_best.yml                           logs/BallShow_competition_best               
+3      ballshow_competition_simple.yml                         logs/BallShow_competition_simple             
+4      deit_transreid_stride.yml                               logs/BallShow                                
+5      rtx4090_final.yml                                       logs/BallShow_rtx4090_final                  
+6      rtx4090_from_final153model.yml                          logs/BallShow_rtx4090_from_final153model     
+7      rtx4090_from_final153model_177_model.yml                logs/BallShow_rtx4090_from_final153model_177_model
+8      rtx4090_from_final212model.yml                          logs/BallShow_rtx4090_from_final212model     
+9      rtx4090_from_final212model_283_model.yml                logs/BallShow_rtx4090_from_final212model_283_model
+10     rtx4090_guaranteed.yml                                  logs/BallShow_rtx4090_guaranteed             
+11     rtx4090_optimized.yml                                   logs/BallShow_rtx4090_optimized              
+12     rtx4090_sprint.yml                                      logs/BallShow_rtx4090_sprint                 
+13     rtx4090_ultimate.yml                                    logs/BallShow_rtx4090_ultimate               
+14     transreid_advanced.yml                                  logs/BallShow_transreid_advanced             
+15     transreid_final.yml                                     logs/BallShow_transreid_final                
+16     vit_base.yml                                            logs/BallShow_vit_base                       
+17     vit_jpm.yml                                             logs/BallShow_vit_jpm                        
+18     vit_optimized_384.yml                                   logs/BallShow_vit_optimized_384              
+19     vit_sie.yml                                             logs/BallShow_vit_sie                        
+20     vit_transreid.yml                                       logs/BallShow_vit_transreid                  
+21     vit_transreid_384.yml                                   logs/BallShow_vit_transreid_384              
+22     vit_transreid_stride.yml                                logs/BallShow_vit_transreid_stride           
+23     vit_transreid_stride_384.yml                            logs/BallShow_vit_transreid_stride_384       
+
+======================================================================
+【未训练的配置文件】(2个)
+----------------------------------------------------------------------
+序号     YML文件                                                   Logs文件夹路径                               
+----------------------------------------------------------------------
+1      competition_fixed.yml                                   logs/BallShow_competition_fixed         
+2      competition_safe.yml                                    logs/BallShow_competition_safe          

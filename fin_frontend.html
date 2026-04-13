@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TransReID 篮球持球人重识别系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0a0a0f;
+            color: #e0e0e0;
+        }
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .glass-panel {
+            background: rgba(20, 20, 28, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+        .neon-border {
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.15), inset 0 0 20px rgba(59, 130, 246, 0.05);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+        .upload-zone {
+            background: linear-gradient(135deg, rgba(30, 30, 40, 0.8) 0%, rgba(20, 20, 30, 0.9) 100%);
+            border: 2px dashed rgba(99, 102, 241, 0.4);
+            transition: all 0.3s ease;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: rgba(99, 102, 241, 0.8);
+            background: linear-gradient(135deg, rgba(40, 40, 60, 0.8) 0%, rgba(30, 30, 45, 0.9) 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 40px rgba(99, 102, 241, 0.2);
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 30px rgba(59, 130, 246, 0.6);
+        }
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+        .metric-card {
+            background: linear-gradient(135deg, rgba(30, 30, 40, 0.9) 0%, rgba(25, 25, 35, 0.95) 100%);
+            border-left: 3px solid #3b82f6;
+        }
+        .result-item {
+            background: rgba(30, 30, 40, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.2s ease;
+        }
+        .result-item:hover {
+            background: rgba(40, 40, 55, 0.8);
+            border-color: rgba(99, 102, 241, 0.3);
+            transform: translateX(5px);
+        }
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(20, 20, 30, 0.5);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(99, 102, 241, 0.5);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(99, 102, 241, 0.8);
+        }
+        .pulse-ring {
+            animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
+        /* Input number arrows removal */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+        /* Slide animation */
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        .slide-in {
+            animation: slideIn 0.3s ease forwards;
+        }
+        /* Combo box styles */
+        .combo-box-container {
+            position: relative;
+        }
+        .combo-input {
+            background: rgba(30, 30, 40, 0.8);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            transition: all 0.3s ease;
+        }
+        .combo-input:focus {
+            outline: none;
+            border-color: rgba(99, 102, 241, 0.8);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+        .combo-dropdown {
+            top: 100%;
+            left: 0;
+            right: 0;
+            margin-top: 4px;
+            background: rgba(25, 25, 35, 0.95);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 50;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.2s ease;
+            backdrop-filter: blur(10px);
+        }
+        .combo-dropdown.active {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+        .combo-option {
+            padding: 8px 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .combo-option:last-child {
+            border-bottom: none;
+        }
+        .combo-option:hover {
+            background: rgba(99, 102, 241, 0.2);
+            padding-left: 16px;
+        }
+        .combo-option.selected {
+            background: rgba(99, 102, 241, 0.3);
+            color: #60a5fa;
+        }
+        .combo-arrow {
+            transition: transform 0.3s ease;
+        }
+        .combo-arrow.open {
+            transform: rotate(180deg);
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+
+    <!-- Header -->
+    <header class="mb-8">
+        <h1 class="text-3xl font-bold flex items-center gap-3">
+            <span class="text-4xl">🏀</span>
+            <span class="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">TransReID 篮球持球人身份重识别系统</span>
+        </h1>
+    </header>
+
+    <!-- Main Grid Layout - Same as index.html -->
+    <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left Sidebar: Controls & Info - Same ratio as index.html (col-span-3) -->
+        <div class="lg:col-span-3 space-y-4">
+            <!-- Server Info -->
+            <div class="glass-panel rounded-xl p-5 h-full">
+                <!-- 前端基本情况 -->
+                <h3 class="text-sm font-semibold mb-3 text-gray-400 flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    前端基本情况
+                </h3>
+                <div class="flex flex-col gap-2 text-xs p-3 bg-gray-800/50 rounded-lg mb-4 pb-4 border-b border-gray-700">
+                    <span id="web-status" class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-yellow-500 pulse-ring"></span>
+                        <span class="text-yellow-400">网页: 等待加载</span>
+                    </span>
+                    <span id="api-status" class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-yellow-500 pulse-ring"></span>
+                        <span class="text-yellow-400">API: 等待连接</span>
+                    </span>
+                    <span id="cache-status" class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-yellow-500 pulse-ring"></span>
+                        <span class="text-yellow-400">缓存: 等待读取</span>
+                    </span>
+                </div>
+                
+                <!-- 缓存文件信息 -->
+                <h3 class="text-sm font-semibold mb-3 text-gray-400 flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"></path></svg>
+                    缓存文件信息
+                </h3>
+                <div class="flex flex-col gap-2 text-xs p-3 bg-gray-800/50 rounded-lg">
+                    <span id="config-status" class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-yellow-500 pulse-ring"></span>
+                        <span class="text-yellow-400">配置: 等待加载</span>
+                    </span>
+                    <span id="model-status" class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-yellow-500 pulse-ring"></span>
+                        <span class="text-yellow-400">模型: 等待读取</span>
+                    </span>
+                    <span id="cache-detail-status" class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-yellow-500 pulse-ring"></span>
+                        <span class="text-yellow-400">TTA: 等待读取</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content: Upload & Results - Same ratio as index.html (col-span-9) -->
+        <div class="lg:col-span-9 space-y-6">
+            
+            <!-- Top Section: Upload Zone + Controls & Metrics (Like index.html) -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                <!-- Upload Zone - Left side (like index.html) -->
+                <div class="glass-panel rounded-xl p-1 h-full">
+                    <div id="upload-zone" class="upload-zone rounded-lg h-full min-h-[150px] flex flex-col items-center justify-center cursor-pointer relative overflow-hidden group">
+                        <input type="file" id="file-input" class="hidden" accept="image/*">
+                        <div id="upload-placeholder" class="text-center z-10">
+                            <svg class="w-12 h-12 mx-auto mb-3 text-gray-500 group-hover:text-blue-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                            <p class="text-sm text-gray-400 font-medium">拖入Query图片</p>
+                            <p class="text-xs text-gray-600 mt-1">或点击从本地选择</p>
+                        </div>
+                        <img id="preview-image" class="absolute inset-0 w-full h-full object-contain hidden p-4" alt="Preview">
+                        <button id="clear-image" class="absolute top-2 right-2 bg-red-500/80 hover:bg-red-600 text-white p-1.5 rounded-full hidden z-20 backdrop-blur-sm transition-all">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Controls & Metrics - Right side -->
+                <div class="space-y-4">
+                    <!-- System Config -->
+                    <div class="glass-panel rounded-xl p-4">
+                        <div class="flex flex-wrap items-end gap-4">
+                            <!-- K-Value Input -->
+                            <div class="flex-1 min-w-[120px]">
+                                <label class="block text-xs font-medium text-gray-400 mb-1">设置K值 (Top-K)</label>
+                                <div class="combo-box-container" id="k-value-container">
+                                    <div class="relative">
+                                        <input 
+                                            type="number" 
+                                            id="k-value-input" 
+                                            value="10" 
+                                            min="1" 
+                                            max="1000"
+                                            class="combo-input w-full rounded-lg px-3 py-2 text-sm text-white pr-8"
+                                            placeholder="输入K值"
+                                        >
+                                        <button 
+                                            id="k-dropdown-btn" 
+                                            class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-400 transition-colors"
+                                        >
+                                            <svg class="w-3 h-3 combo-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <div class="combo-dropdown" id="k-dropdown">
+                                        <div class="combo-option" data-value="5">5</div>
+                                        <div class="combo-option selected" data-value="10">10</div>
+                                        <div class="combo-option" data-value="20">20</div>
+                                        <div class="combo-option" data-value="50">50</div>
+                                        <div class="combo-option" data-value="100">100</div>
+                                        <div class="combo-option" data-value="200">200</div>
+                                        <div class="combo-option" data-value="500">500</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <button id="search-btn" class="btn-primary text-white px-6 py-2 rounded-lg font-semibold flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                                <span>开搜！！！</span>
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Performance Metrics -->
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="metric-card rounded-lg p-4 h-full flex flex-col justify-center">
+                            <div class="text-xs text-gray-500 mb-1">特征提取用时</div>
+                            <div class="flex items-baseline gap-1 justify-between">
+                                <div class="flex items-baseline gap-1">
+                                    <span id="extract-time" class="text-2xl font-bold text-blue-400 mono">0</span>
+                                    <span class="text-xs text-gray-500">ms</span>
+                                </div>
+                                <span class="text-[10px] text-gray-600">目标: ≤40ms</span>
+                            </div>
+                        </div>
+                        <div class="metric-card rounded-lg p-4 h-full flex flex-col justify-center" style="border-left-color: #10b981;">
+                            <div class="text-xs text-gray-500 mb-1">查询匹配用时</div>
+                            <div class="flex items-baseline gap-1 justify-between">
+                                <div class="flex items-baseline gap-1">
+                                    <span id="match-time" class="text-2xl font-bold text-green-400 mono">0</span>
+                                    <span class="text-xs text-gray-500">ms</span>
+                                </div>
+                                <span class="text-[10px] text-gray-600">目标: ≤30ms</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <div class="glass-panel rounded-xl p-6 min-h-[400px]">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-lg font-semibold flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-purple-500"></span>
+                        检索结果
+                        <span id="result-count" class="text-sm text-gray-500 font-normal mono">(等待查询)</span>
+                    </h2>
+                    <div class="flex gap-2">
+                        <button onclick="exportResults()" class="text-xs px-3 py-1.5 rounded border border-gray-700 hover:bg-gray-800 transition-colors text-gray-400">
+                            导出JSON
+                        </button>
+                        <button onclick="clearResults()" class="text-xs px-3 py-1.5 rounded border border-gray-700 hover:bg-gray-800 transition-colors text-gray-400">
+                            清空
+                        </button>
+                    </div>
+                </div>
+
+                <div id="results-container" class="space-y-2 max-h-[500px] overflow-y-auto pr-2">
+                    <div class="text-center py-20 text-gray-600">
+                        <svg class="w-16 h-16 mx-auto mb-4 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                        <p class="text-sm">上传图片并点击"开搜"开始检索</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State Management
+        const state = {
+            currentImage: null,
+            kValue: 10,
+            serverBaseUrl: 'http://127.0.0.1:8002',
+            modelInfo: null
+        };
+
+        // DOM Elements
+        const uploadZone = document.getElementById('upload-zone');
+        const fileInput = document.getElementById('file-input');
+        const previewImage = document.getElementById('preview-image');
+        const uploadPlaceholder = document.getElementById('upload-placeholder');
+        const clearImageBtn = document.getElementById('clear-image');
+        const searchBtn = document.getElementById('search-btn');
+        const resultsContainer = document.getElementById('results-container');
+        const extractTimeEl = document.getElementById('extract-time');
+        const matchTimeEl = document.getElementById('match-time');
+        const resultCountEl = document.getElementById('result-count');
+
+        // K-Value Combo Box Elements
+        const kValueInput = document.getElementById('k-value-input');
+        const kDropdownBtn = document.getElementById('k-dropdown-btn');
+        const kDropdown = document.getElementById('k-dropdown');
+        const kOptions = document.querySelectorAll('.combo-option');
+
+        // Status Elements
+        const webStatusEl = document.getElementById('web-status');
+        const apiStatusEl = document.getElementById('api-status');
+        const serverStatusEl = document.getElementById('server-status');
+        const configStatusEl = document.getElementById('config-status');
+        const modelStatusEl = document.getElementById('model-status');
+        const cacheStatusEl = document.getElementById('cache-status');
+        const cacheDetailStatusEl = document.getElementById('cache-detail-status');
+
+        // Event Listeners
+        uploadZone.addEventListener('click', () => fileInput.click());
+        
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        });
+        
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('dragover');
+        });
+        
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) handleFile(files[0]);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) handleFile(e.target.files[0]);
+        });
+
+        clearImageBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            clearImage();
+        });
+
+        searchBtn.addEventListener('click', performSearch);
+
+        // K-Value Combo Box Logic
+        kDropdownBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            kDropdown.classList.toggle('active');
+            kDropdownBtn.querySelector('.combo-arrow').classList.toggle('open');
+        });
+
+        kValueInput.addEventListener('input', (e) => {
+            let val = parseInt(e.target.value);
+            if (isNaN(val) || val < 1) val = 1;
+            if (val > 1000) val = 1000;
+            state.kValue = val;
+            
+            kOptions.forEach(opt => {
+                opt.classList.toggle('selected', parseInt(opt.dataset.value) === val);
+            });
+        });
+
+        kValueInput.addEventListener('blur', (e) => {
+            if (e.target.value === '' || parseInt(e.target.value) < 1) {
+                e.target.value = 10;
+                state.kValue = 10;
+            }
+        });
+
+        kOptions.forEach(option => {
+            option.addEventListener('click', () => {
+                const val = parseInt(option.dataset.value);
+                kValueInput.value = val;
+                state.kValue = val;
+                
+                kOptions.forEach(o => o.classList.remove('selected'));
+                option.classList.add('selected');
+                
+                kDropdown.classList.remove('active');
+                kDropdownBtn.querySelector('.combo-arrow').classList.remove('open');
+            });
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!document.getElementById('k-value-container').contains(e.target)) {
+                kDropdown.classList.remove('active');
+                kDropdownBtn.querySelector('.combo-arrow').classList.remove('open');
+            }
+        });
+
+        // Functions
+        function handleFile(file) {
+            if (!file.type.startsWith('image/')) {
+                alert('请上传图片文件');
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                state.currentImage = e.target.result;
+                previewImage.src = e.target.result;
+                previewImage.classList.remove('hidden');
+                uploadPlaceholder.classList.add('hidden');
+                clearImageBtn.classList.remove('hidden');
+                searchBtn.disabled = false;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearImage() {
+            state.currentImage = null;
+            previewImage.src = '';
+            previewImage.classList.add('hidden');
+            uploadPlaceholder.classList.remove('hidden');
+            clearImageBtn.classList.add('hidden');
+            fileInput.value = '';
+            searchBtn.disabled = true;
+        }
+
+        // Update status
+        function updateStatus(elementId, status, message) {
+            const el = document.getElementById(elementId);
+            const dot = el.querySelector('span:first-child');
+            const text = el.querySelector('span:last-child');
+            
+            const statusMap = {
+                'loading': { text: message, color: 'text-yellow-400', dot: 'bg-yellow-500' },
+                'success': { text: message, color: 'text-green-400', dot: 'bg-green-500' },
+                'error': { text: message, color: 'text-red-400', dot: 'bg-red-500' }
+            };
+            
+            const config = statusMap[status] || statusMap['loading'];
+            text.textContent = config.text;
+            text.className = config.color;
+            dot.className = `w-2 h-2 rounded-full ${config.dot} pulse-ring`;
+        }
+
+        // Check server status
+        async function checkServerStatus() {
+            // 更新网页状态
+            updateStatus('web-status', 'success', '网页: 加载成功 fin_frontend.html');
+            
+            try {
+                const response = await fetch(`${state.serverBaseUrl}/health`);
+                if (!response.ok) throw new Error('服务器健康检查失败');
+                
+                const data = await response.json();
+                
+                // 更新API状态
+                updateStatus('api-status', 'success', `API: 连接成功 ${state.serverBaseUrl}`);
+                
+                // 配置状态 - 显示具体信息
+                if (data.config_file) {
+                    updateStatus('config-status', 'success', `配置: ${data.config_file}`);
+                } else {
+                    updateStatus('config-status', 'error', '配置: 读取失败');
+                }
+
+                // 模型状态 - 显示具体信息
+                if (data.model_loaded) {
+                    const modelName = data.model_name || 'unknown';
+                    updateStatus('model-status', 'success', `模型: ${modelName}`);
+                } else {
+                    updateStatus('model-status', 'error', '模型: 读取失败');
+                }
+
+                // TTA缓存状态 - 显示具体信息
+                if (data.cache_loaded && data.cache_info) {
+                    const { shape, cache_file, strategy } = data.cache_info;
+                    const ttaName = strategy ? `${strategy}` : '';
+                    const fileName = cache_file ? `${cache_file}` : '';
+                    updateStatus('cache-status', 'success', `缓存: 读取成功`);
+                    updateStatus('cache-detail-status', 'success', `TTA: ${ttaName}`);
+                } else if (data.cache_loaded) {
+                    updateStatus('cache-status', 'success', '缓存: 读取成功');
+                } else {
+                    updateStatus('cache-status', 'error', '缓存: 读取失败');
+                    updateStatus('cache-detail-status', 'error', 'TTA: 读取失败');
+                }
+                
+                // Get model info for feature dimensions
+                const modelResponse = await fetch(`${state.serverBaseUrl}/model_info`);
+                if (modelResponse.ok) {
+                    const modelData = await modelResponse.json();
+                    state.modelInfo = modelData;
+                }
+                
+            } catch (error) {
+                console.error('服务器状态检查失败:', error);
+                updateStatus('web-status', 'error', '网页: 加载失败');
+                updateStatus('api-status', 'error', 'API: 连接失败');
+                updateStatus('config-status', 'error', '配置: 读取失败');
+                updateStatus('model-status', 'error', '模型: 读取失败');
+                updateStatus('cache-status', 'error', '缓存: 读取失败');
+                updateStatus('cache-detail-status', 'error', 'TTA: 读取失败');
+            }
+        }
+
+        async function performSearch() {
+            if (!state.currentImage) return;
+
+            searchBtn.disabled = true;
+            searchBtn.innerHTML = `<svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> 处理中...`;
+
+            // Reset metrics
+            extractTimeEl.textContent = '0';
+            matchTimeEl.textContent = '0';
+
+            try {
+                const startTime = Date.now();
+
+                // 获取K值：优先从输入框读取，确保使用最新值
+                const currentK = parseInt(kValueInput.value) || state.kValue;
+                state.kValue = currentK; // 同步到state
+
+                // Prepare FormData
+                const formData = new FormData();
+                
+                // Convert base64 to Blob
+                const base64Data = state.currentImage.split(',')[1];
+                const blob = await fetch(`data:image/jpeg;base64,${base64Data}`).then(r => r.blob());
+                
+                formData.append('image', blob, 'query.jpg');
+                formData.append('k', currentK.toString());  // k通过FormData传递
+                
+                // Send request
+                const response = await fetch(`${state.serverBaseUrl}/search`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`请求失败: ${response.status} - ${errorText}`);
+                }
+                
+                const result = await response.json();
+                
+                // Display results
+                displayResults(result);
+                
+                // Update metrics
+                extractTimeEl.textContent = result.time_ms?.feature_extraction || 0;
+                matchTimeEl.textContent = result.time_ms?.query_matching || 0;
+                
+            } catch (error) {
+                console.error('搜索失败:', error);
+                resultsContainer.innerHTML = `
+                    <div class="text-center py-20 text-red-400">
+                        <svg class="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-.633-1.964-.633-2.732 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                        </svg>
+                        <p class="text-sm">搜索失败: ${error.message}</p>
+                    </div>
+                `;
+            } finally {
+                searchBtn.disabled = false;
+                searchBtn.innerHTML = `<span>开搜！！！</span><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>`;
+            }
+        }
+
+        function displayResults(result) {
+            const matches = result.matches || [];
+            resultCountEl.textContent = `(${matches.length} 个结果)`;
+            
+            if (matches.length === 0) {
+                resultsContainer.innerHTML = `
+                    <div class="text-center py-20 text-gray-600">
+                        <svg class="w-16 h-16 mx-auto mb-4 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                        <p class="text-sm">未找到匹配结果</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            resultsContainer.innerHTML = matches.map((match, index) => {
+                const similarity = match.similarity || 0;
+                const similarityPercent = (similarity * 100).toFixed(1);
+                const galleryIndex = match.gallery_index || index;
+                const filename = match.filename || `image_${galleryIndex}.jpg`;
+                
+                // Build image URL - 使用后端返回的文件名
+                const imageUrl = `${state.serverBaseUrl}/static/bounding_box_test/${filename}`;
+                
+                return `
+                <div class="result-item rounded-lg p-4 flex items-center gap-4 slide-in" style="animation-delay: ${index * 0.05}s;">
+                    <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center text-lg font-bold text-blue-400 mono border border-blue-500/30">
+                        ${match.rank || index + 1}
+                    </div>
+                    <img src="${imageUrl}" alt="${filename}" class="w-16 h-32 object-cover rounded-lg border border-gray-700" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2264%22 height=%22128%22%3E%3Crect width=%2264%22 height=%22128%22 fill=%22%23374151%22/%3E%3Ctext x=%2232%22 y=%2264%22 font-size=%2210%22 fill=%22%239CA3AF%22 text-anchor=%22middle%22%3EImage%3C/text%3E%3C/svg%3E'">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="font-mono text-sm text-gray-300 truncate" title="${filename}">${filename}</span>
+                            <span class="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                ${similarityPercent}%
+                            </span>
+                        </div>
+                        <div class="text-xs text-gray-500 mono truncate">Index: ${galleryIndex}</div>
+                    </div>
+                    <div class="w-32 h-2 bg-gray-800 rounded-full overflow-hidden">
+                        <div class="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-500" style="width: ${similarity * 100}%"></div>
+                    </div>
+                </div>
+            `}).join('');
+        }
+
+        function exportResults() {
+            const results = Array.from(document.querySelectorAll('.result-item')).map(item => ({
+                rank: item.querySelector('.mono')?.textContent || '',
+                filename: item.querySelector('.text-gray-300')?.textContent || '',
+                similarity: item.querySelector('.text-blue-400')?.textContent || ''
+            }));
+            
+            const blob = new Blob([JSON.stringify(results, null, 2)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `search_results_${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function clearResults() {
+            resultsContainer.innerHTML = `
+                <div class="text-center py-20 text-gray-600">
+                    <svg class="w-16 h-16 mx-auto mb-4 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                    <p class="text-sm">上传图片并点击"开搜"开始检索</p>
+                </div>
+            `;
+            resultCountEl.textContent = '(等待查询)';
+            extractTimeEl.textContent = '0';
+            matchTimeEl.textContent = '0';
+        }
+
+        // Initialize
+        searchBtn.disabled = true;
+        
+        // Load status on page load
+        window.addEventListener('load', () => {
+            console.log('TransReID比赛前端已加载');
+            checkServerStatus();
+        });
+    </script>
+</body>
+</html>

@@ -111,11 +111,8 @@ TEST:
   EVAL: True
   IMS_PER_BATCH: 512
 
-  # Re-ranking参数
-  RE_RANKING: True
-  K1: 25
-  K2: 6
-  LAMBDA: 0.95
+  # 关闭re-ranking（已验证无效）
+  RE_RANKING: False
 
   # 特征提取策略
   NECK_FEAT: 'after'
